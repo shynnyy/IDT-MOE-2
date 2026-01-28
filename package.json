@@ -17,11 +17,12 @@
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-alpha.6",
     "@elice/intl": "0.250117.0",
-    "@elice/mui-elements": "5.250507.1",
-    "@elice/mui-layout": "5.250507.1",
-    "@elice/mui-system": "5.250507.1",
-    "@elice/mui-utils": "5.250507.1",
-    "@elice/mui-x-snackbar": "5.250507.1",
+    "@elice/mui-system": "5.251204.0",
+    "@elice/mui-elements": "5.251204.0",
+    "@elice/mui-layout": "5.251204.0",
+    "@elice/mui-utils": "5.251204.0",
+    "@elice/mui-x-snackbar": "5.251204.0"
+  },
     "@elice/openapi-client-external-contents": "file:lib/elice-openapi-client-external-contents-1.231214.0.tgz",
     "@elicecontents/content-ui": "1.1.2-rc.15",
     "@eliceio/content-sdk": "1.0.0-rc.17",
