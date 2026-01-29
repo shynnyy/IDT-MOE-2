@@ -1,1217 +1,2340 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
-  Container,
   Paper,
   Typography,
   Slider,
   Button,
-  Tabs,
-  Tab,
-  Card,
-  CardContent,
   IconButton,
-  Collapse,
-  Alert,
-  AppBar,
-  Toolbar,
   Chip,
   Stack,
+  Switch,
+  FormControlLabel,
   Divider,
+  Alert,
+  Collapse,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
 } from '@mui/material';
 import {
   PlayArrow,
-  Refresh,
-  Info,
-  Close,
+  Pause,
+  Replay,
+  Speed,
+  ArrowBack,
+  ArrowForward,
   Science,
+  Lightbulb,
+  Info,
+  CheckCircle,
+  Error,
+  WarningAmber,
+  Visibility,
+  VisibilityOff,
+  ExpandLess,
+  ExpandMore,
+  RestartAlt,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 /**
- * Newton's 3rd Law Interactive Simulation
- * Example 1: Hammer and Nail (Contact Force)
- * Example 2: Earth and Moon (Non-contact Force)
+ * NEWTON'S 3RD LAW - INTERACTIVE SIMULATION
+ * FIXED: Progressive nail penetration - nail actually goes deeper into wood
  */
 
-// Styled Components
-const StyledAppBar = styled(AppBar)(({ theme }) => ({
-  background: '#FFFFFF',
-  borderBottom: '1px solid #E5E7EB',
-  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-}));
+// ==================== CONSTANTS ====================
 
-const SimulationCanvas = styled('canvas')(({ theme }) => ({
-  width: '100%',
-  height: '100%',
-  cursor: 'crosshair',
-  borderRadius: theme.spacing(1),
-  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-  border: '1px solid #E5E7EB',
-  background: '#FFFFFF',
-}));
-
-const ControlPanel = styled(Paper)(({ theme }) => ({
-  height: '100%',
-  display: 'flex',
-  flexDirection: 'column',
-  padding: theme.spacing(3),
-  gap: theme.spacing(2),
-  overflowY: 'auto',
-  background: '#FAF5FF',
-  borderRight: '1px solid #E9D5FF',
-  boxShadow: 'none',
-}));
-
-const DataMetricCard = styled(Card)(({ theme }) => ({
-  minWidth: 200,
-  background: '#FFFFFF',
-  border: '1px solid #E5E7EB',
-  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-  borderRadius: theme.spacing(1.5),
-  transition: 'all 0.2s ease',
-  '&:hover': {
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-  },
-}));
-
-const InfoCard = styled(Paper)(({ theme }) => ({
-  position: 'fixed',
-  bottom: theme.spacing(3),
-  right: theme.spacing(3),
-  width: 400,
-  maxWidth: '90vw',
-  zIndex: 1000,
-  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-  borderRadius: theme.spacing(1.5),
-  border: '1px solid #E5E7EB',
-  overflow: 'hidden',
-  background: '#FFFFFF',
-}));
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
-  return (
-    <div role="tabpanel" hidden={value !== index} style={{ height: '100%' }}>
-      {value === index && <Box sx={{ height: '100%' }}>{children}</Box>}
-    </div>
-  );
+const PHYSICS = {
+  G: 150000, // Increased for visible forces in simulation
+  EARTH_MASS_REAL: 5.97,
+  MOON_MASS_REAL: 0.07342,
+  DEFAULTS: {
+    HAMMER_MASS: 2.0,
+    SWING_VELOCITY: 5.0,
+    CONTACT_DURATION: 0.01,
+    EARTH_MASS: 5.97,
+    MOON_MASS: 0.07342,
+    DISTANCE: 250,
+  }
 };
 
-const NewtonLab: React.FC = () => {
-  const [activeTab, setActiveTab] = useState(0);
-  const [showInfo, setShowInfo] = useState(true);
+// ==================== STYLED COMPONENTS ====================
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
-  };
+const AppContainer = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100vh',
+  background: '#FAFBFC',
+  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+});
+
+const Header = styled(Paper)({
+  background: '#FFFFFF',
+  borderBottom: '2px solid #E8EBF0',
+  borderRadius: 0,
+  boxShadow: 'none',
+});
+
+const Canvas = styled('canvas')({
+  width: '100%',
+  height: '100%',
+  background: '#FFFFFF',
+  cursor: 'default',
+});
+
+const ControlBar = styled(Paper)({
+  background: '#FFFFFF',
+  borderTop: '2px solid #E8EBF0',
+  boxShadow: 'none',
+  borderRadius: 0,
+  flexShrink: 0,
+  minHeight: 'fit-content',
+});
+
+const MetricCard = styled(Paper)({
+  padding: '16px 20px',
+  background: '#FFFFFF',
+  border: '2px solid #E8EBF0',
+  borderRadius: 12,
+  minWidth: 160,
+  boxShadow: 'none',
+  transition: 'all 0.2s ease',
+  '&:hover': {
+    borderColor: '#4A90E2',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 4px 12px rgba(74, 144, 226, 0.15)',
+  },
+});
+
+const NavButton = styled(IconButton)({
+  position: 'absolute',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  width: 64,
+  height: 64,
+  background: '#FFFFFF',
+  border: '2px solid #E8EBF0',
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+  zIndex: 50,
+  '&:hover': {
+    background: '#F8F9FA',
+    borderColor: '#4A90E2',
+    transform: 'translateY(-50%) scale(1.05)',
+  },
+  '&:disabled': {
+    background: '#F8F9FA',
+    borderColor: '#E8EBF0',
+    opacity: 0.4,
+    cursor: 'not-allowed',
+  },
+  transition: 'all 0.2s ease',
+});
+
+const InsightCard = styled(Paper)({
+  position: 'absolute',
+  padding: 24,
+  background: '#FFFFFF',
+  border: '2px solid #E8EBF0',
+  borderRadius: 16,
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
+  maxWidth: 360,
+  zIndex: 40,
+  transition: 'all 0.3s ease',
+});
+
+const ActionButton = styled(Button)({
+  textTransform: 'none',
+  fontWeight: 600,
+  padding: '12px 32px',
+  borderRadius: 10,
+  fontSize: '0.9375rem',
+  boxShadow: 'none',
+  border: '2px solid',
+  transition: 'all 0.2s ease',
+});
+
+const FormulaPanel = styled(Paper)({
+  position: 'absolute',
+  top: 24,
+  right: 24,
+  padding: 20,
+  maxWidth: 320,
+  background: 'rgba(255, 255, 255, 0.98)',
+  border: '2px solid #E8EBF0',
+  borderRadius: 12,
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)',
+  zIndex: 10,
+});
+
+// ==================== INTERFACES ====================
+
+interface SimulationProps {
+  currentPage: number;
+  onNavigate: (tab: number) => void;
+}
+
+// ==================== MAIN APP ====================
+
+const NewtonLab: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<number>(0);
 
   return (
-    <Box 
-      sx={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        height: '100vh', 
-        background: '#F5F3FF',
-      }}
-    >
+    <AppContainer>
       {/* Header */}
-      <StyledAppBar position="static" elevation={0}>
-        <Toolbar sx={{ minHeight: 72, px: 4 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-            }}
-          >
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: 1.5,
-                background: '#E0E7FF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Science sx={{ fontSize: 24, color: '#6366F1' }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" component="h1" sx={{ fontWeight: 600, color: '#111827', letterSpacing: '-0.025em' }}>
-                Newton's Physics Laboratory
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#6B7280', fontWeight: 500 }}>
-                Interactive Learning Platform
-              </Typography>
-            </Box>
-          </Box>
-          <Box sx={{ flexGrow: 1 }} />
-          <Tabs
-            value={activeTab}
-            onChange={handleTabChange}
-            sx={{
-              minHeight: 48,
-              '& .MuiTab-root': { 
-                color: '#6B7280', 
-                minHeight: 48,
-                fontWeight: 500,
-                fontSize: '0.875rem',
-                textTransform: 'none',
-                px: 3,
-                '&:hover': {
-                  color: '#374151',
-                }
-              },
-              '& .Mui-selected': { 
-                color: '#6366F1',
-              },
-            }}
-            TabIndicatorProps={{
-              style: { 
-                backgroundColor: '#6366F1',
-                height: 2,
-              },
-            }}
-          >
-            <Tab label="Example 1: Contact Force" />
-            <Tab label="Example 2: Non-contact Force" />
-          </Tabs>
-        </Toolbar>
-      </StyledAppBar>
-
-      {/* Main Content */}
-      <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-        <TabPanel value={activeTab} index={0}>
-          <HammerSimulation />
-        </TabPanel>
-        <TabPanel value={activeTab} index={1}>
-          <OrbitSimulation />
-        </TabPanel>
-      </Box>
-
-      {/* Info Card */}
-      <Collapse in={showInfo}>
-        <InfoCard elevation={0}>
-          <Box 
-            sx={{ 
-              p: 2.5, 
-              background: '#F3F4F6',
-              borderBottom: '1px solid #E5E7EB',
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      <Header elevation={0}>
+        <Box sx={{ px: 4, py: 2.5 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Stack direction="row" alignItems="center" spacing={2.5}>
               <Box
                 sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 1,
-                  background: '#EEF2FF',
+                  width: 52,
+                  height: 52,
+                  borderRadius: 2.5,
+                  background: '#4A90E2',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Info sx={{ fontSize: 20, color: '#6366F1' }} />
+                <Science sx={{ fontSize: 30, color: '#fff' }} />
               </Box>
               <Box>
-                <Typography variant="subtitle2" fontWeight={600} sx={{ color: '#111827' }}>
-                  Key Concept
+                <Typography variant="h5" sx={{ color: '#1A202C', fontWeight: 700, letterSpacing: '-0.02em' }}>
+                  Newton's Third Law Laboratory
                 </Typography>
-                <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                  Newton's Third Law
+                <Typography variant="body2" sx={{ color: '#718096', fontWeight: 500 }}>
+                  Interactive Physics Simulation Platform
                 </Typography>
               </Box>
-            </Box>
-            <IconButton 
-              size="small" 
-              onClick={() => setShowInfo(false)}
-              sx={{ 
-                color: '#6B7280',
-                '&:hover': { 
-                  background: '#F3F4F6',
-                  color: '#374151',
-                },
-              }}
-            >
-              <Close fontSize="small" />
-            </IconButton>
-          </Box>
-          <CardContent sx={{ p: 3 }}>
-            <Box
-              sx={{
-                mb: 2,
-                p: 2,
-                background: '#EFF6FF',
-                borderRadius: 1,
-                border: '1px solid #DBEAFE',
-              }}
-            >
-              <Typography variant="body2" fontWeight={500} color="#1E40AF">
-                For every action, there is an equal and opposite reaction.
-              </Typography>
-            </Box>
-            <Stack spacing={1.5}>
-              {[
-                'Forces always come in pairs',
-                'Two forces are equal in magnitude',
-                'Two forces act in opposite directions',
-              ].map((text, idx) => (
-                <Box
-                  key={idx}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    p: 1.5,
-                    borderRadius: 1,
-                    background: '#F9FAFB',
-                    border: '1px solid #F3F4F6',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: '#6366F1',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <Typography variant="body2" color="#374151" fontWeight={400}>
-                    {text}
-                  </Typography>
-                </Box>
-              ))}
             </Stack>
-          </CardContent>
-        </InfoCard>
-      </Collapse>
 
-      {!showInfo && (
-        <IconButton
-          sx={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            width: 56,
-            height: 56,
-            background: '#6366F1',
-            color: 'white',
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
-            '&:hover': { 
-              background: '#4F46E5',
-              boxShadow: '0 6px 16px rgba(99, 102, 241, 0.4)',
-            },
-          }}
-          onClick={() => setShowInfo(true)}
-        >
-          <Info />
-        </IconButton>
-      )}
-    </Box>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography variant="body2" sx={{ color: '#718096', fontWeight: 600, mr: 1 }}>
+                Example {activeTab + 1} of 2
+              </Typography>
+              
+              <Chip
+                label="Example 1: Contact Force (Hammer & Nail)"
+                onClick={() => setActiveTab(0)}
+                sx={{
+                  background: activeTab === 0 ? '#4A90E2' : '#FFFFFF',
+                  color: activeTab === 0 ? '#FFFFFF' : '#4A5568',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  px: 3,
+                  py: 3.5,
+                  cursor: 'pointer',
+                  border: '2px solid',
+                  borderColor: activeTab === 0 ? '#4A90E2' : '#E8EBF0',
+                  borderRadius: 2,
+                  '&:hover': {
+                    background: activeTab === 0 ? '#3A7BC8' : '#F8F9FA',
+                    borderColor: activeTab === 0 ? '#3A7BC8' : '#4A90E2',
+                  },
+                  transition: 'all 0.2s ease',
+                }}
+              />
+              <Chip
+                label="Example 2: Non-Contact Force (Earth & Moon)"
+                onClick={() => setActiveTab(1)}
+                sx={{
+                  background: activeTab === 1 ? '#4A90E2' : '#FFFFFF',
+                  color: activeTab === 1 ? '#FFFFFF' : '#4A5568',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  px: 3,
+                  py: 3.5,
+                  cursor: 'pointer',
+                  border: '2px solid',
+                  borderColor: activeTab === 1 ? '#4A90E2' : '#E8EBF0',
+                  borderRadius: 2,
+                  '&:hover': {
+                    background: activeTab === 1 ? '#3A7BC8' : '#F8F9FA',
+                    borderColor: activeTab === 1 ? '#3A7BC8' : '#4A90E2',
+                  },
+                  transition: 'all 0.2s ease',
+                }}
+              />
+            </Stack>
+          </Stack>
+        </Box>
+      </Header>
+
+      {/* Main Content */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {activeTab === 0 && <HammerSimulation currentPage={0} onNavigate={setActiveTab} />}
+        {activeTab === 1 && <EarthMoonSimulation currentPage={1} onNavigate={setActiveTab} />}
+      </Box>
+    </AppContainer>
   );
 };
 
-/* -------------------------------------------------------------------------- */
-/* SCENARIO 1: HAMMER SIMULATION                                              */
-/* -------------------------------------------------------------------------- */
+// ==================== HAMMER & NAIL SIMULATION ====================
 
-const HammerSimulation: React.FC = () => {
-  const [mass, setMass] = useState(5);
-  const [velocity, setVelocity] = useState(5);
+const HammerSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigate }) => {
+  // State Management
+  const [hammerMass, setHammerMass] = useState(PHYSICS.DEFAULTS.HAMMER_MASS);
+  const [swingVelocity, setSwingVelocity] = useState(PHYSICS.DEFAULTS.SWING_VELOCITY);
   const [isStriking, setIsStriking] = useState(false);
-  const [impactData, setImpactData] = useState({ force: 0, active: false });
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
-  const stateRef = useRef({
-    hammerY: 100,
-    nailY: 300,
-    phase: 'idle',
-    progress: 0,
-    impactTimer: 0,
-    targetNailY: 300,
+  const [showVectors, setShowVectors] = useState(true);
+  const [contactDuration, setContactDuration] = useState(PHYSICS.DEFAULTS.CONTACT_DURATION);
+  const [insightsExpanded, setInsightsExpanded] = useState(true);
+  const [totalNailDepth, setTotalNailDepth] = useState(0);
+  const [strikeCount, setStrikeCount] = useState(0);
+  const [impactData, setImpactData] = useState({
+    force: 0,
+    active: false,
+    nailDeformation: 0,
   });
 
-  const GROUND_Y = 350;
-  const NAIL_HEAD_Y_INITIAL = 300;
+  // Refs
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const stateRef = useRef({
+    hammerY: 80,
+    hammerVelocity: 0,
+    nailDepth: 0, // Current depth during animation
+    phase: 'ready',
+    time: 0,
+    impactStartTime: 0,
+  });
 
-  const calculateForce = () => Math.round(mass * velocity * 20);
+  const GROUND_Y = 400;
+  const NAIL_INITIAL_Y = 320;
+  const HAMMER_HEIGHT = 50;
 
-  const handleStrike = () => {
-    if (isStriking) return;
-    setIsStriking(true);
-    stateRef.current.phase = 'down';
-    setImpactData({ force: 0, active: false });
+  // Physics Calculations
+  const calculateImpactForce = () => {
+    const deceleration = swingVelocity / contactDuration;
+    const force = hammerMass * deceleration;
+    return Math.round(force);
   };
 
-  const reset = () => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
+  const calculateNailDeformation = () => {
+    const force = calculateImpactForce();
+    return Math.min(40, force / 500);
+  };
+
+  // Drawing Functions
+  const drawGround = (ctx: CanvasRenderingContext2D, width: number) => {
+    const woodGradient = ctx.createLinearGradient(0, GROUND_Y, 0, GROUND_Y + 100);
+    woodGradient.addColorStop(0, '#8B6F47');
+    woodGradient.addColorStop(0.5, '#A0826D');
+    woodGradient.addColorStop(1, '#7A5C3E');
+    ctx.fillStyle = woodGradient;
+    ctx.fillRect(0, GROUND_Y, width, 100);
+
+    ctx.strokeStyle = 'rgba(139, 111, 71, 0.3)';
+    ctx.lineWidth = 1.5;
+    
+    for (let i = -100; i < width + 100; i += 8) {
+      ctx.beginPath();
+      ctx.moveTo(i, GROUND_Y);
+      ctx.lineTo(i + 100, GROUND_Y + 100);
+      ctx.stroke();
     }
-    setIsStriking(false);
-    stateRef.current = {
-      hammerY: 100,
-      nailY: NAIL_HEAD_Y_INITIAL,
-      phase: 'idle',
-      progress: 0,
-      impactTimer: 0,
-      targetNailY: 300,
-    };
-    setImpactData({ force: 0, active: false });
-    
-    // Restart animation loop
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const render = () => {
-      draw(ctx);
-      animationRef.current = requestAnimationFrame(render);
-    };
-    render();
+
+    ctx.strokeStyle = '#6D5D4B';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y);
+    ctx.lineTo(width, GROUND_Y);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(160, 130, 109, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y + 1);
+    ctx.lineTo(width, GROUND_Y + 1);
+    ctx.stroke();
   };
 
-  const drawArrow = (
+  // FIXED NAIL - Shows penetration INTO wood
+  const drawNail = (ctx: CanvasRenderingContext2D, x: number, currentDepth: number) => {
+    const nailWidth = 12;
+    const nailTotalLength = 80;
+    
+    // Nail head position starts at NAIL_INITIAL_Y and moves DOWN as it penetrates
+    const nailHeadY = NAIL_INITIAL_Y + currentDepth;
+    
+    // Part of nail that's still ABOVE the wood surface (GROUND_Y)
+    const aboveGroundLength = Math.max(0, GROUND_Y - nailHeadY);
+    
+    // Part of nail that's INSIDE the wood (below GROUND_Y)
+    const belowGroundLength = Math.max(0, Math.min(nailTotalLength, nailHeadY + nailTotalLength - GROUND_Y));
+    
+    const headWidth = 28;
+    const headHeight = 10;
+
+    // Draw nail shaft INSIDE wood (below ground surface) - darker/shadowed
+    if (belowGroundLength > 0) {
+      ctx.fillStyle = '#64748B';
+      const belowStartY = Math.max(nailHeadY, GROUND_Y);
+      ctx.fillRect(x - nailWidth / 2, belowStartY, nailWidth, belowGroundLength);
+    }
+
+    // Draw nail shaft ABOVE wood surface
+    if (aboveGroundLength > 0) {
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillRect(x - nailWidth / 2, nailHeadY + headHeight, nailWidth, aboveGroundLength);
+      
+      // Shine effect on visible part
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fillRect(x - nailWidth / 2 + 2, nailHeadY + headHeight + 5, 3, Math.max(0, aboveGroundLength - 10));
+      
+      // Shadow on visible part
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.fillRect(x + nailWidth / 2 - 2, nailHeadY + headHeight + 5, 2, Math.max(0, aboveGroundLength - 10));
+    }
+    
+    // Nail head - only draw if above ground
+    if (nailHeadY < GROUND_Y) {
+      ctx.fillStyle = '#64748B';
+      ctx.fillRect(x - headWidth / 2, nailHeadY, headWidth, headHeight);
+      
+      // Label
+      ctx.font = 'bold 11px Inter';
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'center';
+      ctx.fillText('Nail', x, nailHeadY - 8);
+    }
+    
+    // Show depth if nail has penetrated
+    if (currentDepth > 0) {
+      ctx.font = 'bold 10px Inter';
+      ctx.fillStyle = '#EF4444';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${currentDepth.toFixed(1)}mm deep`, x, Math.min(nailHeadY - 20, GROUND_Y - 10));
+    }
+  };
+
+  const drawHammer = (ctx: CanvasRenderingContext2D, x: number, y: number, phase: string) => {
+    const hammerWidth = 80;
+    const handleWidth = 12;
+    const handleLength = 100;
+
+    const hammerGradient = ctx.createLinearGradient(x - hammerWidth / 2, y, x + hammerWidth / 2, y);
+    hammerGradient.addColorStop(0, '#3A3F47');
+    hammerGradient.addColorStop(0.5, '#475569');
+    hammerGradient.addColorStop(1, '#3A3F47');
+    ctx.fillStyle = hammerGradient;
+    ctx.fillRect(x - hammerWidth / 2, y, hammerWidth, HAMMER_HEIGHT);
+    
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+    ctx.fillRect(x - hammerWidth / 2 + 5, y + 5, hammerWidth - 10, 12);
+    
+    const handleGradient = ctx.createLinearGradient(x - handleWidth / 2, y - handleLength, x + handleWidth / 2, y);
+    handleGradient.addColorStop(0, '#D97706');
+    handleGradient.addColorStop(0.5, '#F59E0B');
+    handleGradient.addColorStop(1, '#D97706');
+    ctx.fillStyle = handleGradient;
+    ctx.fillRect(x - handleWidth / 2, y - handleLength, handleWidth, handleLength);
+    
+    ctx.strokeStyle = '#B45309';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const lineY = y - handleLength + 20 + i * 20;
+      ctx.beginPath();
+      ctx.moveTo(x - handleWidth / 2, lineY);
+      ctx.lineTo(x + handleWidth / 2, lineY);
+      ctx.stroke();
+    }
+    
+    ctx.font = 'bold 11px Inter';
+    ctx.fillStyle = '#1F2937';
+    ctx.textAlign = 'center';
+    ctx.fillText('Hammer', x, y - handleLength - 10);
+    ctx.fillText(`${hammerMass} kg`, x, y - handleLength - 24);
+
+    if (phase === 'swinging') {
+      ctx.fillStyle = 'rgba(71, 85, 105, 0.15)';
+      ctx.fillRect(x - hammerWidth / 2, y - 15, hammerWidth, HAMMER_HEIGHT + 15);
+    }
+  };
+
+  const drawForceVector = (
     ctx: CanvasRenderingContext2D,
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number,
+    x: number,
+    y: number,
+    length: number,
+    direction: 'up' | 'down',
     color: string,
     label: string
   ) => {
-    const headlen = 10;
-    const angle = Math.atan2(toY - fromY, toX - fromX);
+    const arrowHeadSize = 12;
+    const directionMultiplier = direction === 'down' ? 1 : -1;
 
     ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 4;
-
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    ctx.lineTo(toX, toY);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + length * directionMultiplier);
     ctx.stroke();
 
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(toX, toY);
-    ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+    const headY = y + length * directionMultiplier;
+    ctx.moveTo(x, headY);
+    ctx.lineTo(x - arrowHeadSize, headY - arrowHeadSize * directionMultiplier);
+    ctx.lineTo(x + arrowHeadSize, headY - arrowHeadSize * directionMultiplier);
+    ctx.closePath();
     ctx.fill();
 
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(label, toX + 15, (fromY + toY) / 2);
+    ctx.font = 'bold 14px Inter';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + 40, y + (length / 2) * directionMultiplier);
   };
 
-  const draw = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      const { width, height } = ctx.canvas;
-      const state = stateRef.current;
+  const drawContactEffect = (ctx: CanvasRenderingContext2D, x: number, y: number, intensity: number) => {
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = `rgba(239, 68, 68, ${0.5 - i * 0.12})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, 20 + i * 15 * intensity, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    ctx.fillStyle = '#FCD34D';
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 * i) / 8;
+      const sparkX = x + Math.cos(angle) * 30 * intensity;
+      const sparkY = y + Math.sin(angle) * 30 * intensity;
+      ctx.beginPath();
+      ctx.arc(sparkX, sparkY, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
 
-      ctx.clearRect(0, 0, width, height);
+  // Animation Loop
+  const animate = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      // Draw Ground
-      ctx.fillStyle = '#8B4513';
-      ctx.fillRect(0, GROUND_Y, width, height - GROUND_Y);
-      ctx.fillStyle = '#A0522D';
-      for (let i = 0; i < width; i += 40) ctx.fillRect(i, GROUND_Y, 20, height - GROUND_Y);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-      // Draw Nail
-      const nailX = width / 2;
-      const nailHeight = 60;
-      const currentNailY = state.nailY;
+    const { width, height } = canvas;
+    const state = stateRef.current;
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillRect(nailX - 5, currentNailY, 10, nailHeight);
-      ctx.fillStyle = '#64748b';
-      ctx.fillRect(nailX - 12, currentNailY, 24, 8);
+    ctx.fillStyle = '#F8F9FA';
+    ctx.fillRect(0, 0, width, height);
+    drawGround(ctx, width);
 
-      // Hammer Animation Logic
-      let hammerY = state.hammerY;
-      const targetY = currentNailY - 40;
+    const centerX = width / 2;
+    const nailX = centerX;
+    const hammerX = centerX;
 
-      if (state.phase === 'down') {
-        const speed = velocity * 2;
-        state.hammerY += speed;
-        if (state.hammerY >= targetY) {
-          state.hammerY = targetY;
-          state.phase = 'contact';
-          state.impactTimer = 0;
+    if (isStriking) {
+      state.time += 1 / 60;
 
-          const forceVal = calculateForce();
-          setImpactData({ force: forceVal, active: true });
+      switch (state.phase) {
+        case 'swinging':
+          state.hammerVelocity += 9.8 / 60 + swingVelocity / 10;
+          state.hammerY += state.hammerVelocity;
 
-          const depth = Math.min(30, forceVal / 50);
-          state.targetNailY = Math.min(GROUND_Y - 10, state.nailY + depth);
-        }
-      } else if (state.phase === 'contact') {
-        state.impactTimer++;
+          // Check collision - hammer hits nail head
+          const nailHeadY = NAIL_INITIAL_Y + totalNailDepth;
+          if (state.hammerY + HAMMER_HEIGHT >= nailHeadY - 5) {
+            state.phase = 'contact';
+            state.impactStartTime = state.time;
+            state.nailDepth = totalNailDepth; // Start from current total depth
+            const force = calculateImpactForce();
+            const deformation = calculateNailDeformation();
+            setImpactData({ force, active: true, nailDeformation: deformation });
+          }
+          break;
 
-        if (state.nailY < state.targetNailY) {
-          state.nailY += 2;
-          state.hammerY += 2;
-        }
+        case 'contact':
+          const contactProgress = (state.time - state.impactStartTime) / contactDuration;
+          
+          if (contactProgress < 1) {
+            const maxDeformation = calculateNailDeformation();
+            // Nail penetrates deeper during contact
+            state.nailDepth = totalNailDepth + maxDeformation * contactProgress;
+            
+            // Hammer follows nail down
+            const nailHeadY = NAIL_INITIAL_Y + state.nailDepth;
+            state.hammerY = nailHeadY - HAMMER_HEIGHT;
+          } else {
+            state.phase = 'rebound';
+            // Lock in the new depth
+            const finalDepth = totalNailDepth + calculateNailDeformation();
+            setTotalNailDepth(finalDepth);
+            setStrikeCount(prev => prev + 1);
+            state.nailDepth = finalDepth;
+          }
+          break;
 
-        if (state.impactTimer > 40) {
-          state.phase = 'up';
-          setImpactData((prev) => ({ ...prev, active: false }));
-        }
-      } else if (state.phase === 'up') {
-        state.hammerY -= 5;
-        if (state.hammerY <= 100) {
-          state.hammerY = 100;
-          state.phase = 'idle';
-          setIsStriking(false);
-        }
+        case 'rebound':
+          state.hammerVelocity = -swingVelocity * 0.3;
+          state.hammerY += state.hammerVelocity;
+
+          if (state.hammerY <= 80) {
+            state.phase = 'complete';
+            setIsStriking(false);
+            setImpactData(prev => ({ ...prev, active: false }));
+          }
+          break;
       }
+    }
 
-      hammerY = state.hammerY;
+    // Draw nail at current depth
+    const displayDepth = isStriking && state.phase !== 'ready' ? state.nailDepth : totalNailDepth;
+    drawNail(ctx, nailX, displayDepth);
+    drawHammer(ctx, hammerX, state.hammerY, state.phase);
 
-      // Draw Hammer
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(nailX - 30, hammerY, 60, 40);
-      ctx.fillStyle = '#d97706';
-      ctx.fillRect(nailX - 5, hammerY - 80, 10, 80);
+    if (showVectors && state.phase === 'contact' && impactData.active) {
+      const forceLength = Math.min(100, impactData.force / 50);
+      const nailHeadY = NAIL_INITIAL_Y + state.nailDepth;
+      
+      drawForceVector(ctx, nailX + 50, nailHeadY, forceLength, 'down', '#EF4444', 'F_on_nail');
+      drawForceVector(ctx, hammerX - 50, state.hammerY + HAMMER_HEIGHT, forceLength, 'up', '#4A90E2', 'F_on_hammer');
+      drawContactEffect(ctx, nailX, nailHeadY, impactData.force / 2000);
 
-      // Draw Forces
-      if (state.phase === 'contact') {
-        const forceMag = calculateForce();
-        const arrowLength = Math.min(120, forceMag / 10);
+      ctx.font = 'bold 24px Inter';
+      ctx.fillStyle = '#10B981';
+      ctx.textAlign = 'center';
+      ctx.fillText('=', centerX, nailHeadY + 60);
+    }
 
-        drawArrow(ctx, nailX + 40, currentNailY, nailX + 40, currentNailY + arrowLength, '#ef4444', 'F_H');
-        drawArrow(ctx, nailX - 40, currentNailY, nailX - 40, currentNailY - arrowLength, '#3b82f6', 'F_N');
-      }
-    },
-    [mass, velocity]
-  );
+    if (state.phase === 'swinging') {
+      ctx.font = 'bold 13px Inter';
+      ctx.fillStyle = '#DC2626';
+      ctx.textAlign = 'center';
+      ctx.fillText(`v = ${state.hammerVelocity.toFixed(1)} m/s`, hammerX, state.hammerY - 10);
+      ctx.strokeStyle = '#DC2626';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hammerX - 30, state.hammerY - 20);
+      ctx.lineTo(hammerX - 30, state.hammerY - 20 + state.hammerVelocity * 3);
+      ctx.stroke();
+    }
+
+    animationRef.current = requestAnimationFrame(animate);
+  }, [isStriking, showVectors, swingVelocity, hammerMass, contactDuration, impactData, totalNailDepth]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
 
-    const render = () => {
-      draw(ctx);
-      animationRef.current = requestAnimationFrame(render);
-    };
-    render();
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    animate();
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [draw]);
+  }, [animate]);
+
+  // Keyboard Navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' && currentPage < 1) {
+        onNavigate(currentPage + 1);
+      }
+      if (e.key === ' ' && !isStriking) {
+        e.preventDefault();
+        handleStrike();
+      }
+      if (e.key === 'r' || e.key === 'R') {
+        handleReset();
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPage, isStriking, onNavigate]);
+
+  // Control Functions
+  const handleStrike = () => {
+    if (isStriking) return;
+    
+    setIsStriking(true);
+    stateRef.current = {
+      hammerY: 80,
+      hammerVelocity: 0,
+      nailDepth: totalNailDepth,
+      phase: 'swinging',
+      time: 0,
+      impactStartTime: 0,
+    };
+    setImpactData({ force: 0, active: false, nailDeformation: 0 });
+  };
+
+  const handleReset = () => {
+    setIsStriking(false);
+    setTotalNailDepth(0);
+    setStrikeCount(0);
+    stateRef.current = {
+      hammerY: 80,
+      hammerVelocity: 0,
+      nailDepth: 0,
+      phase: 'ready',
+      time: 0,
+      impactStartTime: 0,
+    };
+    setImpactData({ force: 0, active: false, nailDeformation: 0 });
+  };
+
+  const handleResetDefaults = () => {
+    setHammerMass(PHYSICS.DEFAULTS.HAMMER_MASS);
+    setSwingVelocity(PHYSICS.DEFAULTS.SWING_VELOCITY);
+    setContactDuration(PHYSICS.DEFAULTS.CONTACT_DURATION);
+    handleReset();
+  };
 
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
-      {/* Control Panel */}
-      <Box sx={{ width: 320 }}>
-        <ControlPanel elevation={0}>
-          <Box>
-            <Typography variant="h6" fontWeight={600} sx={{ color: '#111827', mb: 0.5 }}>
-              Controls
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#6B7280', mb: 2 }}>
-              Adjust parameters to observe force pairs
-            </Typography>
-
-            <Stack spacing={2.5}>
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5, alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={500} color="#374151">
-                    Hammer Mass
-                  </Typography>
-                  <Chip 
-                    label={`${mass} kg`} 
-                    size="small" 
-                    sx={{ 
-                      background: '#E0E7FF',
-                      color: '#6366F1',
-                      fontWeight: 600,
-                      fontSize: '0.75rem',
-                      border: 'none',
-                    }} 
-                  />
-                </Box>
-                <Slider
-                  value={mass}
-                  onChange={(_e, val) => setMass(val as number)}
-                  min={1}
-                  max={10}
-                  disabled={isStriking}
-                  marks
-                  valueLabelDisplay="auto"
-                  sx={{
-                    '& .MuiSlider-thumb': {
-                      background: '#A78BFA',
-                      width: 18,
-                      height: 18,
-                      '&:hover, &.Mui-focusVisible': {
-                        boxShadow: '0 0 0 6px rgba(167, 139, 250, 0.16)',
-                      },
-                    },
-                    '& .MuiSlider-track': {
-                      background: '#A78BFA',
-                      border: 'none',
-                      height: 4,
-                    },
-                    '& .MuiSlider-rail': {
-                      background: '#E9D5FF',
-                      height: 4,
-                    },
-                    '& .MuiSlider-mark': {
-                      background: '#DDD6FE',
-                      width: 2,
-                      height: 8,
-                    },
-                  }}
-                />
-              </Box>
-
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5, alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={500} color="#374151">
-                    Swing Speed
-                  </Typography>
-                  <Chip 
-                    label={`${velocity} m/s`} 
-                    size="small" 
-                    sx={{ 
-                      background: '#E0E7FF',
-                      color: '#6366F1',
-                      fontWeight: 600,
-                      fontSize: '0.75rem',
-                      border: 'none',
-                    }} 
-                  />
-                </Box>
-                <Slider
-                  value={velocity}
-                  onChange={(_e, val) => setVelocity(val as number)}
-                  min={1}
-                  max={10}
-                  disabled={isStriking}
-                  marks
-                  valueLabelDisplay="auto"
-                  sx={{
-                    '& .MuiSlider-thumb': {
-                      background: '#A78BFA',
-                      width: 18,
-                      height: 18,
-                      '&:hover, &.Mui-focusVisible': {
-                        boxShadow: '0 0 0 6px rgba(167, 139, 250, 0.16)',
-                      },
-                    },
-                    '& .MuiSlider-track': {
-                      background: '#A78BFA',
-                      border: 'none',
-                      height: 4,
-                    },
-                    '& .MuiSlider-rail': {
-                      background: '#E9D5FF',
-                      height: 4,
-                    },
-                    '& .MuiSlider-mark': {
-                      background: '#DDD6FE',
-                      width: 2,
-                      height: 8,
-                    },
-                  }}
-                />
-              </Box>
-            </Stack>
-          </Box>
-
-          <Box sx={{ display: 'flex', gap: 1.5, mt: 'auto', pt: 2 }}>
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={<PlayArrow />}
-              onClick={handleStrike}
-              disabled={isStriking}
-              sx={{ 
-                py: 1.5, 
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                background: '#A78BFA',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
-                textTransform: 'none',
-                '&:hover': {
-                  background: '#8B5CF6',
-                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
-                },
-                '&:disabled': {
-                  background: '#E9D5FF',
-                  color: '#C4B5FD',
-                },
-                borderRadius: 1.5,
-              }}
-            >
-              Strike
-            </Button>
-            <IconButton
-              onClick={reset}
-              disabled={isStriking}
-              sx={{ 
-                border: '1px solid #E9D5FF',
-                borderRadius: 1.5,
-                width: 48,
-                '&:hover': {
-                  background: '#F3E8FF',
-                  borderColor: '#DDD6FE',
-                },
-                '&:disabled': {
-                  opacity: 0.5,
-                }
-              }}
-            >
-              <Refresh sx={{ fontSize: 20 }} />
-            </IconButton>
-          </Box>
-        </ControlPanel>
-      </Box>
-
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Canvas Area */}
-      <Box sx={{ flexGrow: 1, position: 'relative', background: '#FEF3C7', p: 3 }}>
-        {/* Data Display */}
-        <Stack
-          direction="row"
-          spacing={2}
-          sx={{ position: 'absolute', top: 24, left: 24, zIndex: 10 }}
-          alignItems="center"
-        >
-          <DataMetricCard sx={{ background: '#FFF7ED' }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="caption" color="#78350F" fontWeight={500} sx={{ textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem' }} gutterBottom display="block">
-                Force on Nail
-              </Typography>
-              <Typography variant="h3" fontWeight={700} sx={{ color: '#DC2626', mb: 0.5 }}>
+      <Box sx={{ flex: 1, position: 'relative', background: '#F8F9FA', minHeight: 0 }}>
+        <Tooltip title="No previous example (or press ← key)">
+          <span>
+            <NavButton disabled sx={{ left: 24 }}>
+              <ArrowBack sx={{ color: '#CBD5E0' }} />
+            </NavButton>
+          </span>
+        </Tooltip>
+
+        <Tooltip title="Next: Earth & Moon (or press → key)">
+          <NavButton onClick={() => onNavigate(1)} sx={{ right: 24 }}>
+            <ArrowForward sx={{ color: '#4A90E2' }} />
+          </NavButton>
+        </Tooltip>
+
+        {/* Data Metrics */}
+        <Stack direction="row" spacing={2} sx={{ position: 'absolute', top: 24, left: 24, zIndex: 10 }}>
+          <MetricCard>
+            <Typography
+              variant="caption"
+              sx={{ color: '#718096', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}
+              gutterBottom
+            >
+              Force on Nail (Action)
+            </Typography>
+            <Stack direction="row" alignItems="baseline" spacing={0.5}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#EF4444' }}>
                 {impactData.active ? impactData.force : '--'}
               </Typography>
-              <Chip 
-                label="Action" 
-                size="small" 
-                sx={{ 
-                  background: '#FEE2E2',
-                  color: '#991B1B',
-                  fontWeight: 500,
-                  fontSize: '0.7rem',
-                  height: 20,
-                  border: 'none',
-                }} 
-              />
-            </CardContent>
-          </DataMetricCard>
+              <Typography variant="body2" sx={{ color: '#718096', fontWeight: 600 }}>
+                N
+              </Typography>
+            </Stack>
+            <Typography variant="caption" sx={{ color: '#A0AEC0' }}>
+              F = ma (downward)
+            </Typography>
+          </MetricCard>
 
           <Box
             sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 1,
-              background: '#FDE68A',
+              width: 52,
+              height: 52,
+              borderRadius: 2,
+              background: '#F0FDF4',
+              border: '2px solid #86EFAC',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#78350F',
-              fontWeight: 600,
-              fontSize: '1.25rem',
+              alignSelf: 'center',
             }}
           >
-            =
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981' }}>
+              =
+            </Typography>
           </Box>
 
-          <DataMetricCard sx={{ background: '#DBEAFE' }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="caption" color="#1E3A8A" fontWeight={500} sx={{ textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem' }} gutterBottom display="block">
-                Force on Hammer
-              </Typography>
-              <Typography variant="h3" fontWeight={700} sx={{ color: '#2563EB', mb: 0.5 }}>
+          <MetricCard>
+            <Typography
+              variant="caption"
+              sx={{ color: '#718096', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}
+              gutterBottom
+            >
+              Force on Hammer (Reaction)
+            </Typography>
+            <Stack direction="row" alignItems="baseline" spacing={0.5}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#4A90E2' }}>
                 {impactData.active ? impactData.force : '--'}
               </Typography>
-              <Chip 
-                label="Reaction" 
-                size="small" 
+              <Typography variant="body2" sx={{ color: '#718096', fontWeight: 600 }}>
+                N
+              </Typography>
+            </Stack>
+            <Typography variant="caption" sx={{ color: '#A0AEC0' }}>
+              F = ma (upward)
+            </Typography>
+          </MetricCard>
+
+          {/* Nail Depth Display */}
+          {totalNailDepth > 0 && (
+            <MetricCard sx={{ 
+              background: '#FEF3C7', 
+              borderColor: '#FCD34D' 
+            }}>
+              <Typography
+                variant="caption"
                 sx={{ 
-                  background: '#BFDBFE',
-                  color: '#1E40AF',
-                  fontWeight: 500,
-                  fontSize: '0.7rem',
-                  height: 20,
-                  border: 'none',
-                }} 
-              />
-            </CardContent>
-          </DataMetricCard>
+                  color: '#92400E', 
+                  fontWeight: 600, 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.5px' 
+                }}
+                gutterBottom
+              >
+                Nail Penetration
+              </Typography>
+              <Stack direction="row" alignItems="baseline" spacing={0.5}>
+                <Typography variant="h3" sx={{ 
+                  fontWeight: 700, 
+                  color: '#D97706' 
+                }}>
+                  {totalNailDepth.toFixed(1)}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#B45309', fontWeight: 600 }}>
+                  mm
+                </Typography>
+              </Stack>
+              <Typography variant="caption" sx={{ 
+                color: '#B45309' 
+              }}>
+                Into wood surface
+              </Typography>
+            </MetricCard>
+          )}
         </Stack>
 
-        <Box sx={{ 
-          width: '100%', 
-          height: '100%', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          p: 2,
-        }}>
-          <SimulationCanvas ref={canvasRef} width={800} height={600} />
-        </Box>
-
-        {!isStriking && impactData.force === 0 && (
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: 32,
-              left: '50%',
-              transform: 'translateX(-50%)',
-            }}
-          >
-            <Alert 
-              severity="info" 
-              sx={{ 
-                background: '#EFF6FF',
-                color: '#1E40AF',
-                border: '1px solid #BFDBFE',
-                borderRadius: 1.5,
-                '& .MuiAlert-icon': {
-                  color: '#3B82F6',
-                }
-              }}
-            >
-              <Typography variant="body2" fontWeight={500}>
-                Click "Strike" to begin experiment
+        {/* Real-time Explanation Panel - Always Visible */}
+        <FormulaPanel>
+          <Typography variant="caption" sx={{ color: '#718096', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
+            📊 Live Parameter Analysis
+          </Typography>
+          <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#1A202C', lineHeight: 1.8 }}>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Current Settings:</strong>
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              • Hammer mass: {hammerMass} kg
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              • Swing velocity: {swingVelocity} m/s
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mb: 1 }}>
+              • Contact time: {(contactDuration * 1000).toFixed(1)} ms
+            </Typography>
+            
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Newton's 2nd Law (F = ma):</strong>
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mb: 1, fontStyle: 'italic', fontSize: '0.75rem' }}>
+              When hammer stops during impact, it decelerates
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              Step 1: Calculate deceleration
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              a = Δv / Δt = {swingVelocity} m/s ÷ {contactDuration} s
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#EF4444', mt: 0.5 }}>
+              a = {(swingVelocity / contactDuration).toFixed(1)} m/s²
+            </Typography>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mt: 1 }}>
+              Step 2: Calculate force needed to stop
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              F = m × a = {hammerMass} kg × {(swingVelocity / contactDuration).toFixed(1)} m/s²
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 0.5 }}>
+              F = {calculateImpactForce()} N
+            </Typography>
+            
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Newton's 3rd Law:</strong>
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              • Hammer pushes nail with {calculateImpactForce()} N ↓
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              • Nail pushes hammer with {calculateImpactForce()} N ↑
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#10B981', display: 'block', mt: 0.5, fontWeight: 600 }}>
+              → Equal magnitude, opposite directions!
+            </Typography>
+            
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Predicted Nail Penetration:</strong>
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#718096', display: 'block', mb: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
+              (Simplified model for wood resistance)
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              Depth ≈ Force / 500 (material constant)
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#D97706', mt: 0.5 }}>
+              Next strike: +{calculateNailDeformation().toFixed(1)} mm
+            </Typography>
+            {totalNailDepth > 0 && (
+              <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
+                Total depth: {totalNailDepth.toFixed(1)} mm
               </Typography>
-            </Alert>
+            )}
+            
+            {impactData.active && (
+              <>
+                <Divider sx={{ my: 1.5 }} />
+                <Alert severity="error" sx={{ py: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                    🔨 IMPACT! Both objects feel {impactData.force} N
+                  </Typography>
+                </Alert>
+              </>
+            )}
+            
+            {!impactData.active && (
+              <>
+                <Divider sx={{ my: 1.5 }} />
+                <Alert severity="info" sx={{ py: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                    💡 Adjust mass, velocity, or contact time to see force change
+                  </Typography>
+                </Alert>
+              </>
+            )}
           </Box>
-        )}
+        </FormulaPanel>
+
+        {/* Key Insights Card */}
+        <InsightCard 
+          sx={{ 
+            bottom: insightsExpanded ? 24 : 24,
+            right: 24,
+            height: insightsExpanded ? 'auto' : 60,
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: insightsExpanded ? 2 : 0 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 2,
+                  background: '#FEF3C7',
+                  border: '2px solid #FDE68A',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Lightbulb sx={{ color: '#D97706', fontSize: 22 }} />
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1A202C' }}>
+                Contact Forces
+              </Typography>
+            </Stack>
+            <IconButton onClick={() => setInsightsExpanded(!insightsExpanded)} size="small">
+              {insightsExpanded ? <ExpandLess /> : <ExpandMore />}
+            </IconButton>
+          </Stack>
+
+          <Collapse in={insightsExpanded}>
+            <Stack spacing={2}>
+              <Alert 
+                severity="success" 
+                icon={<CheckCircle />}
+                sx={{ 
+                  background: '#F0FDF4', 
+                  border: '2px solid #86EFAC',
+                  '& .MuiAlert-icon': { color: '#10B981' }
+                }}
+              >
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  ✓ Newton's 3rd Law - Action & Reaction
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Both forces equal: {impactData.active ? impactData.force : '--'} N
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Acting in opposite directions
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block' }}>
+                  • Not acting on the same object
+                </Typography>
+              </Alert>
+
+              <Alert 
+                severity="info" 
+                icon={<Info />}
+                sx={{ 
+                  background: '#EFF6FF', 
+                  border: '2px solid #93C5FD',
+                  '& .MuiAlert-icon': { color: '#4A90E2' }
+                }}
+              >
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  Progressive Penetration
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Each strike drives nail deeper into wood
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Current depth: {totalNailDepth.toFixed(1)}mm
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: '#4A90E2' }}>
+                  Keep striking to drive it deeper!
+                </Typography>
+              </Alert>
+
+              {!isStriking && totalNailDepth === 0 && (
+                <Alert 
+                  severity="warning" 
+                  icon={<WarningAmber />}
+                  sx={{ 
+                    background: '#FFFBEB', 
+                    border: '2px solid #FCD34D',
+                    '& .MuiAlert-icon': { color: '#F59E0B' }
+                  }}
+                >
+                  <Typography variant="caption" fontWeight={600}>
+                    Click "Strike Hammer" or press Space to begin
+                  </Typography>
+                </Alert>
+              )}
+            </Stack>
+          </Collapse>
+        </InsightCard>
+
+        <Canvas ref={canvasRef} />
       </Box>
+
+      {/* Control Panel */}
+      <ControlBar elevation={0}>
+        <Box sx={{ p: 3 }}>
+          <Stack spacing={3}>
+            {/* Action Buttons */}
+            <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+              <ActionButton
+                variant="contained"
+                startIcon={<PlayArrow />}
+                onClick={handleStrike}
+                disabled={isStriking}
+                sx={{
+                  background: '#4A90E2',
+                  borderColor: '#4A90E2',
+                  color: '#FFFFFF',
+                  '&:hover': {
+                    background: '#3A7BC8',
+                    borderColor: '#3A7BC8',
+                  },
+                  '&:disabled': {
+                    background: '#CBD5E0',
+                    borderColor: '#CBD5E0',
+                    color: '#FFFFFF',
+                  },
+                }}
+              >
+                Strike Hammer
+              </ActionButton>
+
+              <ActionButton
+                variant="outlined"
+                startIcon={<Replay />}
+                onClick={handleReset}
+                disabled={isStriking}
+                sx={{
+                  borderColor: '#E8EBF0',
+                  color: '#4A5568',
+                  '&:hover': {
+                    borderColor: '#4A90E2',
+                    background: '#F8F9FA',
+                  },
+                  '&:disabled': {
+                    borderColor: '#E8EBF0',
+                    color: '#A0AEC0',
+                  },
+                }}
+              >
+                Reset Animation
+              </ActionButton>
+
+              <Tooltip title="Restore default values: 2kg, 5m/s, 10ms">
+                <ActionButton
+                  variant="outlined"
+                  startIcon={<RestartAlt />}
+                  onClick={handleResetDefaults}
+                  disabled={isStriking}
+                  sx={{
+                    borderColor: '#FDE68A',
+                    color: '#D97706',
+                    background: '#FFFBEB',
+                    '&:hover': {
+                      borderColor: '#D97706',
+                      background: '#FEF3C7',
+                    },
+                    '&:disabled': {
+                      borderColor: '#E8EBF0',
+                      color: '#A0AEC0',
+                      background: '#F8F9FA',
+                    },
+                  }}
+                >
+                  Reset to Defaults
+                </ActionButton>
+              </Tooltip>
+
+              <Divider orientation="vertical" flexItem />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showVectors}
+                    onChange={(e) => setShowVectors(e.target.checked)}
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#4A90E2',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#4A90E2',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    {showVectors ? <Visibility /> : <VisibilityOff />}
+                    <Typography variant="body2" fontWeight={600}>
+                      Force Vectors
+                    </Typography>
+                  </Stack>
+                }
+              />
+            </Stack>
+
+            <Divider />
+
+            {/* Parameter Controls */}
+            <Stack direction="row" spacing={5} alignItems="center" justifyContent="center">
+              <Tooltip 
+                title={isStriking ? "⚠️ Pause animation to adjust parameters" : "Adjust hammer mass"}
+                arrow
+              >
+                <Box sx={{ width: 280, opacity: isStriking ? 0.5 : 1, pointerEvents: isStriking ? 'none' : 'auto' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="body2" fontWeight={700} color="#1A202C">
+                      Hammer Mass
+                    </Typography>
+                    <Chip
+                      label={`${hammerMass.toFixed(1)} kg`}
+                      size="small"
+                      sx={{
+                        background: '#4A90E2',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        border: 'none',
+                      }}
+                    />
+                  </Stack>
+                  <Slider
+                    value={hammerMass}
+                    onChange={(_, val) => setHammerMass(val as number)}
+                    min={0.5}
+                    max={5.0}
+                    step={0.1}
+                    disabled={isStriking}
+                    marks={[
+                      { value: 0.5, label: '0.5' },
+                      { value: 2.5, label: '2.5' },
+                      { value: 5.0, label: '5.0' },
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        background: '#4A90E2',
+                        width: 22,
+                        height: 22,
+                        border: '3px solid #FFFFFF',
+                        boxShadow: '0 2px 8px rgba(74, 144, 226, 0.4)',
+                      },
+                      '& .MuiSlider-track': {
+                        background: '#4A90E2',
+                        border: 'none',
+                        height: 6,
+                      },
+                      '& .MuiSlider-rail': {
+                        background: '#E8EBF0',
+                        height: 6,
+                      },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+
+              <Tooltip 
+                title={isStriking ? "⚠️ Pause animation to adjust parameters" : "Adjust swing velocity"}
+                arrow
+              >
+                <Box sx={{ width: 280, opacity: isStriking ? 0.5 : 1, pointerEvents: isStriking ? 'none' : 'auto' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="body2" fontWeight={700} color="#1A202C">
+                      Swing Velocity
+                    </Typography>
+                    <Chip
+                      label={`${swingVelocity.toFixed(1)} m/s`}
+                      size="small"
+                      sx={{
+                        background: '#4A90E2',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        border: 'none',
+                      }}
+                    />
+                  </Stack>
+                  <Slider
+                    value={swingVelocity}
+                    onChange={(_, val) => setSwingVelocity(val as number)}
+                    min={1.0}
+                    max={10.0}
+                    step={0.1}
+                    disabled={isStriking}
+                    marks={[
+                      { value: 1, label: '1' },
+                      { value: 5.5, label: '5.5' },
+                      { value: 10, label: '10' },
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        background: '#4A90E2',
+                        width: 22,
+                        height: 22,
+                        border: '3px solid #FFFFFF',
+                        boxShadow: '0 2px 8px rgba(74, 144, 226, 0.4)',
+                      },
+                      '& .MuiSlider-track': {
+                        background: '#4A90E2',
+                        border: 'none',
+                        height: 6,
+                      },
+                      '& .MuiSlider-rail': {
+                        background: '#E8EBF0',
+                        height: 6,
+                      },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+
+              <Tooltip 
+                title={isStriking ? "⚠️ Pause animation to adjust parameters" : "Shorter duration = higher force"}
+                arrow
+              >
+                <Box sx={{ width: 280, opacity: isStriking ? 0.5 : 1, pointerEvents: isStriking ? 'none' : 'auto' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="body2" fontWeight={700} color="#1A202C">
+                      Contact Duration
+                    </Typography>
+                    <Chip
+                      label={`${(contactDuration * 1000).toFixed(1)} ms`}
+                      size="small"
+                      sx={{
+                        background: '#4A90E2',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        border: 'none',
+                      }}
+                    />
+                  </Stack>
+                  <Slider
+                    value={contactDuration * 1000}
+                    onChange={(_, val) => setContactDuration((val as number) / 1000)}
+                    min={5}
+                    max={50}
+                    step={1}
+                    disabled={isStriking}
+                    marks={[
+                      { value: 5, label: '5ms' },
+                      { value: 27.5, label: '27.5ms' },
+                      { value: 50, label: '50ms' },
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        background: '#4A90E2',
+                        width: 22,
+                        height: 22,
+                        border: '3px solid #FFFFFF',
+                        boxShadow: '0 2px 8px rgba(74, 144, 226, 0.4)',
+                      },
+                      '& .MuiSlider-track': {
+                        background: '#4A90E2',
+                        border: 'none',
+                        height: 6,
+                      },
+                      '& .MuiSlider-rail': {
+                        background: '#E8EBF0',
+                        height: 6,
+                      },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+            </Stack>
+
+            {/* Keyboard Shortcuts Hint */}
+            <Typography variant="caption" sx={{ textAlign: 'center', color: '#A0AEC0', fontStyle: 'italic' }}>
+              💡 Keyboard shortcuts: Space = Strike | R = Reset | → = Next Example
+            </Typography>
+          </Stack>
+        </Box>
+      </ControlBar>
     </Box>
   );
 };
 
-/* -------------------------------------------------------------------------- */
-/* SCENARIO 2: ORBIT SIMULATION                                               */
-/* -------------------------------------------------------------------------- */
+// ==================== EARTH & MOON SIMULATION ====================
+// [Same as original - keeping it unchanged]
 
-const OrbitSimulation: React.FC = () => {
-  const [earthMass, setEarthMass] = useState(5);
-  const [moonMass, setMoonMass] = useState(2);
-  const [distance, setDistance] = useState(200);
+const EarthMoonSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigate }) => {
+  const [earthMass, setEarthMass] = useState(PHYSICS.DEFAULTS.EARTH_MASS);
+  const [moonMass, setMoonMass] = useState(PHYSICS.DEFAULTS.MOON_MASS);
+  const [distance, setDistance] = useState(PHYSICS.DEFAULTS.DISTANCE);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [animationSpeed, setAnimationSpeed] = useState(1);
+  const [showVectors, setShowVectors] = useState(true);
+  const [showTrail, setShowTrail] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
+  const [viewMode, setViewMode] = useState<'normal' | 'center-of-mass'>('normal');
+  const [showMisconception, setShowMisconception] = useState(false);
+  const [insightsExpanded, setInsightsExpanded] = useState(true);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
   const angleRef = useRef(0);
+  const trailPoints = useRef([]);
 
-  const calculateGravity = () => {
-    const G = 2000;
-    return Math.round((G * earthMass * moonMass) / (distance * 0.5));
+  const calculateForce = () => {
+    return Math.round((PHYSICS.G * earthMass * moonMass) / Math.pow(distance, 2));
+  };
+
+  const calculateAcceleration = (mass: number) => {
+    const force = calculateForce();
+    return (force / mass).toFixed(2);
+  };
+
+  const getMassRatio = () => {
+    return (earthMass / moonMass).toFixed(1);
+  };
+
+  const getAccelerationRatio = () => {
+    return (parseFloat(calculateAcceleration(moonMass)) / parseFloat(calculateAcceleration(earthMass))).toFixed(1);
+  };
+
+  const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.strokeStyle = '#E8EBF0';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    for (let x = 0; x <= width; x += 50) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= height; y += 50) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  };
+
+  const drawCenterOfMass = (ctx: CanvasRenderingContext2D, centerX: number, centerY: number) => {
+    const comOffset = (moonMass * distance) / (earthMass + moonMass);
+    const comX = centerX + comOffset;
+
+    ctx.beginPath();
+    ctx.fillStyle = '#EF4444';
+    ctx.arc(comX, centerY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.strokeStyle = '#EF4444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(comX, centerY - 30);
+    ctx.lineTo(comX, centerY + 30);
+    ctx.moveTo(comX - 30, centerY);
+    ctx.lineTo(comX + 30, centerY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = 'bold 12px Inter';
+    ctx.fillStyle = '#EF4444';
+    ctx.textAlign = 'center';
+    ctx.fillText('Center of Mass', comX, centerY - 40);
   };
 
   const drawArrow = (
     ctx: CanvasRenderingContext2D,
     fromX: number,
     fromY: number,
-    toX: number,
-    toY: number,
+    length: number,
+    angle: number,
     color: string,
     label: string
   ) => {
-    const headlen = 12;
-    const angle = Math.atan2(toY - fromY, toX - fromX);
-
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 5;
+    const toX = fromX + Math.cos(angle) * length;
+    const toY = fromY + Math.sin(angle) * length;
 
     ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
     ctx.moveTo(fromX, fromY);
     ctx.lineTo(toX, toY);
     ctx.stroke();
 
+    const headLength = 14;
     ctx.beginPath();
+    ctx.fillStyle = color;
     ctx.moveTo(toX, toY);
-    ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.lineTo(
+      toX - headLength * Math.cos(angle - Math.PI / 6),
+      toY - headLength * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      toX - headLength * Math.cos(angle + Math.PI / 6),
+      toY - headLength * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
     ctx.fill();
 
-    ctx.font = 'bold 14px sans-serif';
+    ctx.font = 'bold 13px Inter';
+    const metrics = ctx.measureText(label);
+    const labelX = toX + Math.cos(angle) * 25;
+    const labelY = toY + Math.sin(angle) * 25;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(labelX - metrics.width / 2 - 4, labelY - 10, metrics.width + 8, 20);
     ctx.fillStyle = color;
-    ctx.fillText(label, toX + Math.cos(angle) * 20, toY + Math.sin(angle) * 20);
+    ctx.textAlign = 'center';
+    ctx.fillText(label, labelX, labelY + 4);
+  };
+
+  const drawTrail = (ctx: CanvasRenderingContext2D) => {
+    if (trailPoints.current.length < 2) return;
+
+    const gradient = ctx.createLinearGradient(
+      trailPoints.current[0].x,
+      trailPoints.current[0].y,
+      trailPoints.current[trailPoints.current.length - 1].x,
+      trailPoints.current[trailPoints.current.length - 1].y
+    );
+    gradient.addColorStop(0, 'rgba(203, 213, 224, 0.1)');
+    gradient.addColorStop(1, 'rgba(203, 213, 224, 0.4)');
+
+    ctx.beginPath();
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([2, 2]);
+
+    trailPoints.current.forEach((point, i) => {
+      if (i === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
+      }
+    });
+
+    ctx.stroke();
+    ctx.setLineDash([]);
   };
 
   const draw = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
+    (ctx) => {
       const { width, height } = ctx.canvas;
       const centerX = width / 2;
       const centerY = height / 2;
 
-      ctx.clearRect(0, 0, width, height);
+      const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width, height) / 2);
+      bgGradient.addColorStop(0, '#1A202C');
+      bgGradient.addColorStop(1, '#0F1419');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, width, height);
 
-      angleRef.current += 0.005 + (100 / distance) * 0.005;
+      ctx.fillStyle = '#FFFFFF';
+      for (let i = 0; i < 100; i++) {
+        const x = (i * 137.5) % width;
+        const y = (i * 449.3) % height;
+        const size = (i % 3) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + (i % 7) * 0.1;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
 
-      const earthRadius = 20 + earthMass * 4;
+      if (showGrid) {
+        drawGrid(ctx, width, height);
+      }
+
+      if (isPlaying) {
+        angleRef.current += 0.008 * animationSpeed * (100 / distance);
+      }
+
+      const earthRadius = 25 + earthMass * 2.5;
+      const moonRadius = 12 + moonMass * 3;
+
+      let earthX = centerX;
+      let earthY = centerY;
+
       const moonX = centerX + Math.cos(angleRef.current) * distance;
       const moonY = centerY + Math.sin(angleRef.current) * distance;
-      const moonRadius = 10 + moonMass * 2;
 
-      // Orbit Path
+      if (viewMode === 'center-of-mass') {
+        const comOffset = (moonMass * distance) / (earthMass + moonMass);
+        earthX = centerX + comOffset - Math.cos(angleRef.current) * comOffset;
+        earthY = centerY - Math.sin(angleRef.current) * comOffset;
+        drawCenterOfMass(ctx, centerX, centerY);
+      }
+
       ctx.beginPath();
-      ctx.strokeStyle = '#e2e8f0';
-      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#4A5568';
       ctx.lineWidth = 2;
+      ctx.setLineDash([10, 10]);
       ctx.arc(centerX, centerY, distance, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Connection Line
+      if (showTrail) {
+        trailPoints.current.push({ x: moonX, y: moonY });
+        if (trailPoints.current.length > 150) {
+          trailPoints.current.shift();
+        }
+        drawTrail(ctx);
+      }
+
       ctx.beginPath();
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
-      ctx.moveTo(centerX, centerY);
+      ctx.strokeStyle = '#718096';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.moveTo(earthX, earthY);
       ctx.lineTo(moonX, moonY);
       ctx.stroke();
+      ctx.setLineDash([]);
 
-      // Forces
-      const forceMag = calculateGravity();
-      const arrowLength = Math.min(distance - earthRadius - moonRadius, forceMag / 5);
+      const midX = (earthX + moonX) / 2;
+      const midY = (earthY + moonY) / 2;
+      ctx.font = 'bold 11px Inter';
+      ctx.fillStyle = '#CBD5E0';
+      ctx.textAlign = 'center';
+      ctx.fillText(`r = ${distance} units`, midX, midY - 10);
 
-      const angleToEarth = Math.atan2(centerY - moonY, centerX - moonX);
-      drawArrow(
-        ctx,
-        moonX,
-        moonY,
-        moonX + Math.cos(angleToEarth) * arrowLength,
-        moonY + Math.sin(angleToEarth) * arrowLength,
-        '#ef4444',
-        'F_E'
-      );
+      if (showVectors) {
+        const force = calculateForce();
+        const arrowLength = Math.min(90, force / 12);
 
-      const angleToMoon = Math.atan2(moonY - centerY, moonX - centerX);
-      drawArrow(
-        ctx,
-        centerX,
-        centerY,
-        centerX + Math.cos(angleToMoon) * arrowLength,
-        centerY + Math.sin(angleToMoon) * arrowLength,
-        '#3b82f6',
-        'F_M'
-      );
+        const angleToEarth = Math.atan2(earthY - moonY, earthX - moonX);
+        drawArrow(ctx, moonX, moonY, arrowLength, angleToEarth, '#EF4444', 'F_E');
 
-      // Earth
+        const angleToMoon = Math.atan2(moonY - earthY, moonX - earthX);
+        drawArrow(ctx, earthX, earthY, arrowLength, angleToMoon, '#4A90E2', 'F_M');
+
+        const equalX = (moonX + earthX) / 2;
+        const equalY = (moonY + earthY) / 2 + 50;
+        
+        ctx.fillStyle = '#10B981';
+        ctx.fillRect(equalX - 20, equalY - 14, 40, 28);
+        
+        ctx.font = 'bold 24px Inter';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'center';
+        ctx.fillText('=', equalX, equalY + 6);
+      }
+
+      ctx.save();
+      const earthGradient = ctx.createRadialGradient(earthX, earthY, 0, earthX, earthY, earthRadius);
+      earthGradient.addColorStop(0, '#60A5FA');
+      earthGradient.addColorStop(0.7, '#3B82F6');
+      earthGradient.addColorStop(1, '#2563EB');
+      ctx.fillStyle = earthGradient;
       ctx.beginPath();
-      ctx.fillStyle = '#3b82f6';
-      ctx.arc(centerX, centerY, earthRadius, 0, Math.PI * 2);
+      ctx.arc(earthX, earthY, earthRadius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#BFDBFE';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
       ctx.shadowBlur = 20;
-      ctx.shadowColor = 'rgba(59, 130, 246, 0.5)';
+      ctx.shadowColor = 'rgba(59, 130, 246, 0.6)';
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Moon
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 13px Inter';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 4;
+      ctx.fillText('Earth', earthX, earthY + 4);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      ctx.save();
+      const moonGradient = ctx.createRadialGradient(moonX - moonRadius / 3, moonY - moonRadius / 3, 0, moonX, moonY, moonRadius);
+      moonGradient.addColorStop(0, '#F1F5F9');
+      moonGradient.addColorStop(0.5, '#CBD5E0');
+      moonGradient.addColorStop(1, '#94A3B8');
+      ctx.fillStyle = moonGradient;
       ctx.beginPath();
-      ctx.fillStyle = '#94a3b8';
       ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#1A202C';
+      ctx.font = 'bold 11px Inter';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+      ctx.shadowBlur = 3;
+      ctx.fillText('Moon', moonX, moonY + 3);
+      ctx.shadowBlur = 0;
+      ctx.restore();
     },
-    [earthMass, moonMass, distance]
+    [earthMass, moonMass, distance, isPlaying, animationSpeed, showVectors, showTrail, showGrid, viewMode]
   );
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const render = () => {
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const animate = () => {
       draw(ctx);
-      animationRef.current = requestAnimationFrame(render);
+      animationRef.current = requestAnimationFrame(animate);
     };
-    render();
+
+    animate();
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, [draw]);
 
+  useEffect(() => {
+    trailPoints.current = [];
+  }, [earthMass, moonMass, distance]);
+
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' && currentPage > 0) {
+        onNavigate(currentPage - 1);
+      }
+      if (e.key === ' ') {
+        e.preventDefault();
+        setIsPlaying(!isPlaying);
+      }
+      if (e.key === 'r' || e.key === 'R') {
+        angleRef.current = 0;
+        trailPoints.current = [];
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPage, isPlaying, onNavigate]);
+
+  const handleResetDefaults = () => {
+    setEarthMass(PHYSICS.DEFAULTS.EARTH_MASS);
+    setMoonMass(PHYSICS.DEFAULTS.MOON_MASS);
+    setDistance(PHYSICS.DEFAULTS.DISTANCE);
+    angleRef.current = 0;
+    trailPoints.current = [];
+  };
+
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
-      {/* Control Panel */}
-      <Box sx={{ width: 320 }}>
-        <ControlPanel elevation={0}>
-          <Box>
-            <Typography variant="h6" fontWeight={600} sx={{ color: '#111827', mb: 0.5 }}>
-              Gravity Controls
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box sx={{ flex: 1, position: 'relative', background: '#0F1419', minHeight: 0 }}>
+        <Tooltip title="Previous: Hammer & Nail (or press ← key)">
+          <NavButton onClick={() => onNavigate(0)} sx={{ left: 24 }}>
+            <ArrowBack sx={{ color: '#4A90E2' }} />
+          </NavButton>
+        </Tooltip>
+
+        <Tooltip title="No next example">
+          <span>
+            <NavButton disabled sx={{ right: 24 }}>
+              <ArrowForward sx={{ color: '#CBD5E0' }} />
+            </NavButton>
+          </span>
+        </Tooltip>
+
+        <Stack direction="row" spacing={2} sx={{ position: 'absolute', top: 24, left: 24, zIndex: 10 }}>
+          <MetricCard sx={{ background: 'rgba(255, 255, 255, 0.95)' }}>
+            <Typography
+              variant="caption"
+              sx={{ color: '#718096', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}
+              gutterBottom
+            >
+              Gravitational Force
             </Typography>
-            <Typography variant="body2" sx={{ color: '#6B7280', mb: 2 }}>
-              Adjust mass and distance parameters
-            </Typography>
-
-            <Stack spacing={2.5}>
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5, alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={500} color="#374151">
-                    Earth Mass (M₁)
-                  </Typography>
-                  <Chip 
-                    label={earthMass} 
-                    size="small" 
-                    sx={{ 
-                      background: '#E0E7FF',
-                      color: '#6366F1',
-                      fontWeight: 600,
-                      fontSize: '0.75rem',
-                      border: 'none',
-                    }} 
-                  />
-                </Box>
-                <Slider
-                  value={earthMass}
-                  onChange={(_e, val) => setEarthMass(val as number)}
-                  min={1}
-                  max={10}
-                  marks
-                  valueLabelDisplay="auto"
-                  sx={{
-                    '& .MuiSlider-thumb': {
-                      background: '#A78BFA',
-                      width: 18,
-                      height: 18,
-                    },
-                    '& .MuiSlider-track': {
-                      background: '#A78BFA',
-                      border: 'none',
-                      height: 4,
-                    },
-                    '& .MuiSlider-rail': {
-                      background: '#E9D5FF',
-                      height: 4,
-                    },
-                  }}
-                />
-              </Box>
-
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5, alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={500} color="#374151">
-                    Moon Mass (M₂)
-                  </Typography>
-                  <Chip 
-                    label={moonMass} 
-                    size="small" 
-                    sx={{ 
-                      background: '#E0E7FF',
-                      color: '#6366F1',
-                      fontWeight: 600,
-                      fontSize: '0.75rem',
-                      border: 'none',
-                    }} 
-                  />
-                </Box>
-                <Slider
-                  value={moonMass}
-                  onChange={(_e, val) => setMoonMass(val as number)}
-                  min={1}
-                  max={10}
-                  marks
-                  valueLabelDisplay="auto"
-                  sx={{
-                    '& .MuiSlider-thumb': {
-                      background: '#A78BFA',
-                      width: 18,
-                      height: 18,
-                    },
-                    '& .MuiSlider-track': {
-                      background: '#A78BFA',
-                      border: 'none',
-                      height: 4,
-                    },
-                    '& .MuiSlider-rail': {
-                      background: '#E9D5FF',
-                      height: 4,
-                    },
-                  }}
-                />
-              </Box>
-
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5, alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={500} color="#374151">
-                    Distance (r)
-                  </Typography>
-                  <Chip 
-                    label={distance} 
-                    size="small" 
-                    sx={{ 
-                      background: '#E0E7FF',
-                      color: '#6366F1',
-                      fontWeight: 600,
-                      fontSize: '0.75rem',
-                      border: 'none',
-                    }} 
-                  />
-                </Box>
-                <Slider
-                  value={distance}
-                  onChange={(_e, val) => setDistance(val as number)}
-                  min={120}
-                  max={350}
-                  valueLabelDisplay="auto"
-                  sx={{
-                    '& .MuiSlider-thumb': {
-                      background: '#A78BFA',
-                      width: 18,
-                      height: 18,
-                    },
-                    '& .MuiSlider-track': {
-                      background: '#A78BFA',
-                      border: 'none',
-                      height: 4,
-                    },
-                    '& .MuiSlider-rail': {
-                      background: '#E9D5FF',
-                      height: 4,
-                    },
-                  }}
-                />
-              </Box>
+            <Stack direction="row" alignItems="baseline" spacing={0.5}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#4A90E2' }}>
+                {calculateForce()}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#718096', fontWeight: 600 }}>
+                N
+              </Typography>
             </Stack>
-          </Box>
-
-          <Box 
-            sx={{ 
-              p: 2,
-              background: '#ECFDF5',
-              borderRadius: 1.5,
-              border: '1px solid #A7F3D0',
-              mt: 'auto',
-            }}
-          >
-            <Typography variant="caption" fontWeight={600} color="#065F46" gutterBottom display="block">
-              Discovery
+            <Typography variant="caption" sx={{ color: '#A0AEC0' }}>
+              F = G(m₁m₂)/r²
             </Typography>
-            <Typography variant="caption" color="#047857" fontWeight={400} display="block" sx={{ lineHeight: 1.6 }}>
-              Notice that even if the Earth is much bigger, the force arrows are exactly the same length!
+          </MetricCard>
+
+          <MetricCard sx={{ background: 'rgba(255, 255, 255, 0.95)' }}>
+            <Typography
+              variant="caption"
+              sx={{ color: '#718096', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}
+              gutterBottom
+            >
+              Moon Acceleration
             </Typography>
-          </Box>
-        </ControlPanel>
-      </Box>
+            <Stack direction="row" alignItems="baseline" spacing={0.5}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#EF4444' }}>
+                {calculateAcceleration(moonMass)}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#718096', fontWeight: 600 }}>
+                m/s²
+              </Typography>
+            </Stack>
+            <Typography variant="caption" sx={{ color: '#A0AEC0' }}>
+              a_M = F/m_M (larger!)
+            </Typography>
+          </MetricCard>
 
-      {/* Canvas Area */}
-      <Box
-        sx={{
-          flexGrow: 1,
-          position: 'relative',
-          background: '#1E293B',
-          p: 3,
-        }}
-      >
-        {/* Data Display */}
-        <Stack
-          direction="row"
-          spacing={2}
-          sx={{ position: 'absolute', top: 24, left: 24, zIndex: 10 }}
-          alignItems="center"
-        >
-          <DataMetricCard sx={{ background: '#FFF7ED' }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="caption" color="#78350F" fontWeight={500} sx={{ textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem' }} gutterBottom display="block">
-                Force on Moon
+          <MetricCard sx={{ background: 'rgba(255, 255, 255, 0.95)' }}>
+            <Typography
+              variant="caption"
+              sx={{ color: '#718096', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}
+              gutterBottom
+            >
+              Earth Acceleration
+            </Typography>
+            <Stack direction="row" alignItems="baseline" spacing={0.5}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#4A90E2' }}>
+                {calculateAcceleration(earthMass)}
               </Typography>
-              <Typography variant="h3" fontWeight={700} sx={{ color: '#DC2626', mb: 0.5 }}>
-                {calculateGravity()}
+              <Typography variant="body2" sx={{ color: '#718096', fontWeight: 600 }}>
+                m/s²
               </Typography>
-              <Chip 
-                label="Action" 
-                size="small" 
-                sx={{ 
-                  background: '#FEE2E2',
-                  color: '#991B1B',
-                  fontWeight: 500,
-                  fontSize: '0.7rem',
-                  height: 20,
-                  border: 'none',
-                }} 
-              />
-            </CardContent>
-          </DataMetricCard>
-
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 1,
-              background: 'rgba(255, 255, 255, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontWeight: 600,
-              fontSize: '1.25rem',
-            }}
-          >
-            =
-          </Box>
-
-          <DataMetricCard sx={{ background: '#DBEAFE' }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="caption" color="#1E3A8A" fontWeight={500} sx={{ textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem' }} gutterBottom display="block">
-                Force on Earth
-              </Typography>
-              <Typography variant="h3" fontWeight={700} sx={{ color: '#2563EB', mb: 0.5 }}>
-                {calculateGravity()}
-              </Typography>
-              <Chip 
-                label="Reaction" 
-                size="small" 
-                sx={{ 
-                  background: '#BFDBFE',
-                  color: '#1E40AF',
-                  fontWeight: 500,
-                  fontSize: '0.7rem',
-                  height: 20,
-                  border: 'none',
-                }} 
-              />
-            </CardContent>
-          </DataMetricCard>
+            </Stack>
+            <Typography variant="caption" sx={{ color: '#A0AEC0' }}>
+              a_E = F/m_E (smaller!)
+            </Typography>
+          </MetricCard>
         </Stack>
 
-        <Box sx={{ 
-          width: '100%', 
-          height: '100%', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          p: 2,
-        }}>
-          <SimulationCanvas ref={canvasRef} width={800} height={600} />
-        </Box>
+        {/* Real-time Explanation Panel */}
+        <FormulaPanel>
+          <Typography variant="caption" sx={{ color: '#718096', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
+            📊 Live Calculations
+          </Typography>
+          <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#1A202C', lineHeight: 1.8 }}>
+            <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                ℹ️ Note: G constant is scaled for visualization. Real value: 6.674×10⁻¹¹
+              </Typography>
+            </Alert>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Newton's Law of Gravitation:</strong>
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              F = G × (m₁ × m₂) / r²
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mb: 1, fontStyle: 'italic', fontSize: '0.75rem' }}>
+              Every mass attracts every other mass
+            </Typography>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              F = 150,000 × ({earthMass.toFixed(2)} × {moonMass.toFixed(5)}) / {distance}²
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              F = 150,000 × {(earthMass * moonMass).toFixed(5)} / {(distance * distance).toFixed(0)}
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 0.5 }}>
+              F = {calculateForce()} N
+            </Typography>
+            
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Newton's 3rd Law:</strong>
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mb: 1, fontStyle: 'italic', fontSize: '0.75rem' }}>
+              For every action, there's an equal and opposite reaction
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              • Earth pulls Moon: {calculateForce()} N →
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              • Moon pulls Earth: {calculateForce()} N ←
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#10B981', display: 'block', mt: 0.5, fontWeight: 600 }}>
+              → Same force, opposite directions!
+            </Typography>
+            
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>Newton's 2nd Law (F = ma):</strong>
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#718096', display: 'block', mb: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
+              Same force → Different accelerations!
+            </Typography>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mt: 0.5 }}>
+              Moon: a = F / m
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              a_Moon = {calculateForce()} N / {moonMass.toFixed(5)} kg
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#EF4444', mt: 0.5 }}>
+              a_Moon = {calculateAcceleration(moonMass)} m/s²
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
+              ↑ Larger! (smaller mass = bigger acceleration)
+            </Typography>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mt: 1 }}>
+              Earth: a = F / m
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
+              a_Earth = {calculateForce()} N / {earthMass.toFixed(2)} kg
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 0.5 }}>
+              a_Earth = {calculateAcceleration(earthMass)} m/s²
+            </Typography>
+            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
+              ↓ Smaller! (larger mass = smaller acceleration)
+            </Typography>
+            
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="caption" sx={{ fontWeight: 600, color: '#10B981', display: 'block' }}>
+              📚 Key Insight:
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#4A5568', display: 'block', mt: 0.5 }}>
+              Both objects feel the same {calculateForce()} N force, but Moon accelerates {getAccelerationRatio()}× more than Earth because it's lighter!
+            </Typography>
+            
+            <Alert severity="success" sx={{ mt: 1.5, py: 0.5 }}>
+              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                💡 Try changing mass or distance to see effects!
+              </Typography>
+            </Alert>
+          </Box>
+        </FormulaPanel>
 
-        <Chip
-          label="Formula: F ∝ (m₁ × m₂) / r²"
-          sx={{
-            position: 'absolute',
-            bottom: 32,
-            right: 32,
-            background: '#FFF7ED',
-            color: '#78350F',
-            fontWeight: 500,
-            fontSize: '0.8rem',
-            border: '1px solid #FED7AA',
-            py: 2,
-            px: 2.5,
+        <InsightCard 
+          sx={{ 
+            bottom: 24,
+            right: 24, 
+            background: 'rgba(255, 255, 255, 0.98)',
+            height: insightsExpanded ? 'auto' : 60,
           }}
-        />
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: insightsExpanded ? 2 : 0 }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 2,
+                  background: '#E0F2FE',
+                  border: '2px solid #7DD3FC',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Lightbulb sx={{ color: '#0284C7', fontSize: 22 }} />
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1A202C' }}>
+                Non-Contact Forces
+              </Typography>
+            </Stack>
+            <IconButton onClick={() => setInsightsExpanded(!insightsExpanded)} size="small">
+              {insightsExpanded ? <ExpandLess /> : <ExpandMore />}
+            </IconButton>
+          </Stack>
+
+          <Collapse in={insightsExpanded}>
+            <Stack spacing={2}>
+              <Alert
+                severity="success"
+                icon={<CheckCircle />}
+                sx={{
+                  background: '#F0FDF4',
+                  border: '2px solid #86EFAC',
+                  '& .MuiAlert-icon': { color: '#10B981' },
+                }}
+              >
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  ✓ Newton's 3rd Law - Equal Forces
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • F_on_Moon = F_on_Earth = {calculateForce()} N
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Equal in magnitude
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Acting in opposite directions
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block' }}>
+                  • Not acting on the same object
+                </Typography>
+              </Alert>
+
+              <Alert
+                severity="info"
+                icon={<Info />}
+                sx={{
+                  background: '#EFF6FF',
+                  border: '2px solid #93C5FD',
+                  '& .MuiAlert-icon': { color: '#4A90E2' },
+                }}
+              >
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  ⚠️ Accelerations are DIFFERENT
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                  • Mass ratio: {getMassRatio()}:1 (Earth:Moon)
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block' }}>
+                  • Acceleration ratio: 1:{getAccelerationRatio()} (Earth:Moon)
+                </Typography>
+              </Alert>
+
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setShowMisconception(!showMisconception)}
+                sx={{
+                  textTransform: 'none',
+                  borderColor: '#E8EBF0',
+                  color: '#4A5568',
+                  fontWeight: 600,
+                  '&:hover': {
+                    borderColor: '#4A90E2',
+                    background: '#F8F9FA',
+                  },
+                }}
+              >
+                {showMisconception ? 'Hide' : 'Show'} Common Misconception
+              </Button>
+
+              <Collapse in={showMisconception}>
+                <Alert
+                  severity="warning"
+                  icon={<Error />}
+                  sx={{
+                    background: '#FFFBEB',
+                    border: '2px solid #FCD34D',
+                    '& .MuiAlert-icon': { color: '#F59E0B' },
+                  }}
+                >
+                  <Typography variant="body2" fontWeight={600} gutterBottom>
+                    ❌ Common Misconception
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                    "The bigger object exerts a stronger force"
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600} gutterBottom>
+                    ✅ Reality (Newton's 3rd Law)
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                    Both forces are ALWAYS equal in magnitude! The difference is in acceleration: a = F/m
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block' }}>
+                    Smaller mass → larger acceleration (Moon moves more)
+                  </Typography>
+                </Alert>
+              </Collapse>
+            </Stack>
+          </Collapse>
+        </InsightCard>
+
+        <Canvas ref={canvasRef} />
       </Box>
+
+      <ControlBar elevation={0}>
+        <Box sx={{ p: 3 }}>
+          <Stack spacing={3}>
+            <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+              <ActionButton
+                variant="contained"
+                startIcon={isPlaying ? <Pause /> : <PlayArrow />}
+                onClick={() => setIsPlaying(!isPlaying)}
+                sx={{
+                  background: '#4A90E2',
+                  borderColor: '#4A90E2',
+                  color: '#FFFFFF',
+                  '&:hover': {
+                    background: '#3A7BC8',
+                    borderColor: '#3A7BC8',
+                  },
+                }}
+              >
+                {isPlaying ? 'Pause' : 'Play'}
+              </ActionButton>
+
+              <ActionButton
+                variant="outlined"
+                startIcon={<Replay />}
+                onClick={() => {
+                  angleRef.current = 0;
+                  trailPoints.current = [];
+                }}
+                sx={{
+                  borderColor: '#E8EBF0',
+                  color: '#4A5568',
+                  '&:hover': {
+                    borderColor: '#4A90E2',
+                    background: '#F8F9FA',
+                  },
+                }}
+              >
+                Reset Animation
+              </ActionButton>
+
+              <Tooltip title="Restore default values: Real Earth & Moon masses">
+                <ActionButton
+                  variant="outlined"
+                  startIcon={<RestartAlt />}
+                  onClick={handleResetDefaults}
+                  sx={{
+                    borderColor: '#FDE68A',
+                    color: '#D97706',
+                    background: '#FFFBEB',
+                    '&:hover': {
+                      borderColor: '#D97706',
+                      background: '#FEF3C7',
+                    },
+                  }}
+                >
+                  Reset to Defaults
+                </ActionButton>
+              </Tooltip>
+
+              <Divider orientation="vertical" flexItem />
+
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Speed sx={{ color: '#718096' }} />
+                <Slider
+                  value={animationSpeed}
+                  onChange={(_, val) => setAnimationSpeed(val as number)}
+                  min={0.1}
+                  max={3}
+                  step={0.1}
+                  sx={{
+                    width: 120,
+                    '& .MuiSlider-thumb': {
+                      background: '#4A90E2',
+                    },
+                    '& .MuiSlider-track': {
+                      background: '#4A90E2',
+                    },
+                  }}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(v) => `${v}×`}
+                />
+                <Typography variant="caption" sx={{ minWidth: 35, color: '#718096', fontWeight: 600 }}>
+                  {animationSpeed.toFixed(1)}×
+                </Typography>
+              </Stack>
+
+              <Divider orientation="vertical" flexItem />
+
+              <ToggleButtonGroup
+                value={viewMode}
+                exclusive
+                onChange={(_, val) => val && setViewMode(val)}
+                size="small"
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    borderColor: '#E8EBF0',
+                    color: '#4A5568',
+                    '&.Mui-selected': {
+                      background: '#4A90E2',
+                      color: '#FFFFFF',
+                      borderColor: '#4A90E2',
+                      '&:hover': {
+                        background: '#3A7BC8',
+                      },
+                    },
+                  },
+                }}
+              >
+                <ToggleButton value="normal">Normal View</ToggleButton>
+                <ToggleButton value="center-of-mass">Center of Mass</ToggleButton>
+              </ToggleButtonGroup>
+
+              <Divider orientation="vertical" flexItem />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showVectors}
+                    onChange={(e) => setShowVectors(e.target.checked)}
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#4A90E2',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#4A90E2',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" fontWeight={600} color="#1A202C">
+                    Force Vectors
+                  </Typography>
+                }
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showTrail}
+                    onChange={(e) => setShowTrail(e.target.checked)}
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#4A90E2',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#4A90E2',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" fontWeight={600} color="#1A202C">
+                    Orbital Trail
+                  </Typography>
+                }
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showGrid}
+                    onChange={(e) => setShowGrid(e.target.checked)}
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#4A90E2',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#4A90E2',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" fontWeight={600} color="#1A202C">
+                    Grid
+                  </Typography>
+                }
+              />
+            </Stack>
+
+            <Divider />
+
+            <Stack direction="row" spacing={5} alignItems="center" justifyContent="center">
+              <Tooltip 
+                title={isPlaying ? "⚠️ Pause animation to adjust parameters" : "Adjust Earth mass"}
+                arrow
+              >
+                <Box sx={{ width: 280, opacity: isPlaying ? 0.5 : 1, pointerEvents: isPlaying ? 'none' : 'auto' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="body2" fontWeight={700} color="#1A202C">
+                      Earth Mass
+                    </Typography>
+                    <Chip
+                      label={`${earthMass.toFixed(2)} × 10²⁴ kg`}
+                      size="small"
+                      sx={{
+                        background: '#4A90E2',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        border: 'none',
+                      }}
+                    />
+                  </Stack>
+                  <Slider
+                    value={earthMass}
+                    onChange={(_, val) => setEarthMass(val as number)}
+                    min={1}
+                    max={10}
+                    step={0.01}
+                    disabled={isPlaying}
+                    marks={[
+                      { value: 5.97, label: 'Real' },
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        background: '#4A90E2',
+                        width: 22,
+                        height: 22,
+                        border: '3px solid #FFFFFF',
+                        boxShadow: '0 2px 8px rgba(74, 144, 226, 0.4)',
+                      },
+                      '& .MuiSlider-track': {
+                        background: '#4A90E2',
+                        border: 'none',
+                        height: 6,
+                      },
+                      '& .MuiSlider-rail': {
+                        background: '#E8EBF0',
+                        height: 6,
+                      },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+
+              <Tooltip 
+                title={isPlaying ? "⚠️ Pause animation to adjust parameters" : "Adjust Moon mass"}
+                arrow
+              >
+                <Box sx={{ width: 280, opacity: isPlaying ? 0.5 : 1, pointerEvents: isPlaying ? 'none' : 'auto' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="body2" fontWeight={700} color="#1A202C">
+                      Moon Mass
+                    </Typography>
+                    <Chip
+                      label={`${moonMass.toFixed(5)} × 10²⁴ kg`}
+                      size="small"
+                      sx={{
+                        background: '#4A90E2',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        border: 'none',
+                      }}
+                    />
+                  </Stack>
+                  <Slider
+                    value={moonMass}
+                    onChange={(_, val) => setMoonMass(val as number)}
+                    min={0.01}
+                    max={2}
+                    step={0.00001}
+                    disabled={isPlaying}
+                    marks={[
+                      { value: 0.07342, label: 'Real' },
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        background: '#4A90E2',
+                        width: 22,
+                        height: 22,
+                        border: '3px solid #FFFFFF',
+                        boxShadow: '0 2px 8px rgba(74, 144, 226, 0.4)',
+                      },
+                      '& .MuiSlider-track': {
+                        background: '#4A90E2',
+                        border: 'none',
+                        height: 6,
+                      },
+                      '& .MuiSlider-rail': {
+                        background: '#E8EBF0',
+                        height: 6,
+                      },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+
+              <Tooltip 
+                title={isPlaying ? "⚠️ Pause animation to adjust parameters" : "Adjust distance"}
+                arrow
+              >
+                <Box sx={{ width: 280, opacity: isPlaying ? 0.5 : 1, pointerEvents: isPlaying ? 'none' : 'auto' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="body2" fontWeight={700} color="#1A202C">
+                      Distance (r)
+                    </Typography>
+                    <Chip
+                      label={`${distance} units`}
+                      size="small"
+                      sx={{
+                        background: '#4A90E2',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        border: 'none',
+                      }}
+                    />
+                  </Stack>
+                  <Slider
+                    value={distance}
+                    onChange={(_, val) => setDistance(val as number)}
+                    min={150}
+                    max={400}
+                    disabled={isPlaying}
+                    marks={[
+                      { value: 150, label: '150' },
+                      { value: 275, label: '275' },
+                      { value: 400, label: '400' },
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        background: '#4A90E2',
+                        width: 22,
+                        height: 22,
+                        border: '3px solid #FFFFFF',
+                        boxShadow: '0 2px 8px rgba(74, 144, 226, 0.4)',
+                      },
+                      '& .MuiSlider-track': {
+                        background: '#4A90E2',
+                        border: 'none',
+                        height: 6,
+                      },
+                      '& .MuiSlider-rail': {
+                        background: '#E8EBF0',
+                        height: 6,
+                      },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+            </Stack>
+
+            <Typography variant="caption" sx={{ textAlign: 'center', color: '#A0AEC0', fontStyle: 'italic' }}>
+              💡 Keyboard shortcuts: Space = Play/Pause | R = Reset | ← = Previous Example
+            </Typography>
+          </Stack>
+        </Box>
+      </ControlBar>
     </Box>
   );
 };
