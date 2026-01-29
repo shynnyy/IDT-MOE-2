@@ -804,111 +804,43 @@ const HammerSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigate }
           )}
         </Stack>
 
-        {/* Real-time Explanation Panel - Always Visible */}
-        <FormulaPanel>
-          <Typography variant="caption" sx={{ color: '#718096', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
-            📊 Live Parameter Analysis
-          </Typography>
-          <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#1A202C', lineHeight: 1.8 }}>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Current Settings:</strong>
+        {/* Formula Breakdown Panel */}
+        {impactData.active && (
+          <FormulaPanel>
+            <Typography variant="caption" sx={{ color: '#718096', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
+              📐 Live Calculation
             </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              • Hammer mass: {hammerMass} kg
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              • Swing velocity: {swingVelocity} m/s
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mb: 1 }}>
-              • Contact time: {(contactDuration * 1000).toFixed(1)} ms
-            </Typography>
-            
-            <Divider sx={{ my: 1.5 }} />
-            
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Newton's 2nd Law (F = ma):</strong>
-            </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mb: 1, fontStyle: 'italic', fontSize: '0.75rem' }}>
-              When hammer stops during impact, it decelerates
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              Step 1: Calculate deceleration
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              a = Δv / Δt = {swingVelocity} m/s ÷ {contactDuration} s
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#EF4444', mt: 0.5 }}>
-              a = {(swingVelocity / contactDuration).toFixed(1)} m/s²
-            </Typography>
-            
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mt: 1 }}>
-              Step 2: Calculate force needed to stop
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              F = m × a = {hammerMass} kg × {(swingVelocity / contactDuration).toFixed(1)} m/s²
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 0.5 }}>
-              F = {calculateImpactForce()} N
-            </Typography>
-            
-            <Divider sx={{ my: 1.5 }} />
-            
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Newton's 3rd Law:</strong>
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              • Hammer pushes nail with {calculateImpactForce()} N ↓
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              • Nail pushes hammer with {calculateImpactForce()} N ↑
-            </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#10B981', display: 'block', mt: 0.5, fontWeight: 600 }}>
-              → Equal magnitude, opposite directions!
-            </Typography>
-            
-            <Divider sx={{ my: 1.5 }} />
-            
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Predicted Nail Penetration:</strong>
-            </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#718096', display: 'block', mb: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
-              (Simplified model for wood resistance)
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              Depth ≈ Force / 500 (material constant)
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#D97706', mt: 0.5 }}>
-              Next strike: +{calculateNailDeformation().toFixed(1)} mm
-            </Typography>
-            {totalNailDepth > 0 && (
-              <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
-                Total depth: {totalNailDepth.toFixed(1)} mm
+            <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#1A202C', lineHeight: 1.8 }}>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                <strong>Step 1:</strong> Find acceleration
               </Typography>
-            )}
-            
-            {impactData.active && (
-              <>
-                <Divider sx={{ my: 1.5 }} />
-                <Alert severity="error" sx={{ py: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                    🔨 IMPACT! Both objects feel {impactData.force} N
-                  </Typography>
-                </Alert>
-              </>
-            )}
-            
-            {!impactData.active && (
-              <>
-                <Divider sx={{ my: 1.5 }} />
-                <Alert severity="info" sx={{ py: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                    💡 Adjust mass, velocity, or contact time to see force change
-                  </Typography>
-                </Alert>
-              </>
-            )}
-          </Box>
-        </FormulaPanel>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568' }}>
+                a = Δv / Δt
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568' }}>
+                a = {swingVelocity} m/s ÷ {contactDuration} s
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568' }}>
+                a = {(swingVelocity / contactDuration).toFixed(1)} m/s²
+              </Typography>
+              
+              <Divider sx={{ my: 1 }} />
+              
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', mt: 1 }}>
+                <strong>Step 2:</strong> Calculate force
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568' }}>
+                F = m × a
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568' }}>
+                F = {hammerMass} kg × {(swingVelocity / contactDuration).toFixed(1)} m/s²
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 1 }}>
+                F = {impactData.force} N
+              </Typography>
+            </Box>
+          </FormulaPanel>
+        )}
 
         {/* Key Insights Card */}
         <InsightCard 
@@ -955,16 +887,16 @@ const HammerSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigate }
                 }}
               >
                 <Typography variant="body2" fontWeight={600} gutterBottom>
-                  ✓ Newton's 3rd Law - Action & Reaction
+                  Force Pair Analysis
                 </Typography>
                 <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                  • Both forces equal: {impactData.active ? impactData.force : '--'} N
+                  • Both forces are equal: {impactData.active ? impactData.force : '--'} N
                 </Typography>
                 <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                  • Acting in opposite directions
+                  • Forces act in opposite directions
                 </Typography>
                 <Typography variant="caption" sx={{ display: 'block' }}>
-                  • Not acting on the same object
+                  • Contact duration: ~{contactDuration * 1000} ms
                 </Typography>
               </Alert>
 
@@ -1753,27 +1685,14 @@ const EarthMoonSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigat
             📊 Live Calculations
           </Typography>
           <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#1A202C', lineHeight: 1.8 }}>
-            <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                ℹ️ Note: G constant is scaled for visualization. Real value: 6.674×10⁻¹¹
-              </Typography>
-            </Alert>
-            
             <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Newton's Law of Gravitation:</strong>
+              <strong>1. Gravitational Force:</strong>
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
               F = G × (m₁ × m₂) / r²
             </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mb: 1, fontStyle: 'italic', fontSize: '0.75rem' }}>
-              Every mass attracts every other mass
-            </Typography>
-            
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              F = 150,000 × ({earthMass.toFixed(2)} × {moonMass.toFixed(5)}) / {distance}²
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              F = 150,000 × {(earthMass * moonMass).toFixed(5)} / {(distance * distance).toFixed(0)}
+              F = 150k × ({earthMass.toFixed(2)} × {moonMass.toFixed(5)}) / {distance}²
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 0.5 }}>
               F = {calculateForce()} N
@@ -1782,70 +1701,41 @@ const EarthMoonSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigat
             <Divider sx={{ my: 1.5 }} />
             
             <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Newton's 3rd Law:</strong>
-            </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mb: 1, fontStyle: 'italic', fontSize: '0.75rem' }}>
-              For every action, there's an equal and opposite reaction
+              <strong>2. Moon Acceleration:</strong>
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              • Earth pulls Moon: {calculateForce()} N →
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              • Moon pulls Earth: {calculateForce()} N ←
-            </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#10B981', display: 'block', mt: 0.5, fontWeight: 600 }}>
-              → Same force, opposite directions!
-            </Typography>
-            
-            <Divider sx={{ my: 1.5 }} />
-            
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
-              <strong>Newton's 2nd Law (F = ma):</strong>
-            </Typography>
-            <Typography variant="caption" sx={{ pl: 2, color: '#718096', display: 'block', mb: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
-              Same force → Different accelerations!
-            </Typography>
-            
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mt: 0.5 }}>
-              Moon: a = F / m
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              a_Moon = {calculateForce()} N / {moonMass.toFixed(5)} kg
+              a = F / m = {calculateForce()} / {moonMass.toFixed(5)}
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#EF4444', mt: 0.5 }}>
               a_Moon = {calculateAcceleration(moonMass)} m/s²
             </Typography>
             <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
-              ↑ Larger! (smaller mass = bigger acceleration)
+              ↑ Larger (smaller mass!)
             </Typography>
             
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem', mt: 1 }}>
-              Earth: a = F / m
+            <Divider sx={{ my: 1.5 }} />
+            
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 0.5 }}>
+              <strong>3. Earth Acceleration:</strong>
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, color: '#4A5568', fontSize: '0.8125rem' }}>
-              a_Earth = {calculateForce()} N / {earthMass.toFixed(2)} kg
+              a = F / m = {calculateForce()} / {earthMass.toFixed(2)}
             </Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', pl: 2, fontWeight: 700, color: '#4A90E2', mt: 0.5 }}>
               a_Earth = {calculateAcceleration(earthMass)} m/s²
             </Typography>
             <Typography variant="caption" sx={{ pl: 2, color: '#059669', display: 'block', mt: 0.5, fontStyle: 'italic' }}>
-              ↓ Smaller! (larger mass = smaller acceleration)
+              ↓ Smaller (larger mass!)
             </Typography>
             
             <Divider sx={{ my: 1.5 }} />
             
-            <Typography variant="caption" sx={{ fontWeight: 600, color: '#10B981', display: 'block' }}>
-              📚 Key Insight:
+            <Typography variant="caption" sx={{ fontWeight: 600, color: '#10B981', display: 'block', mt: 1 }}>
+              💡 Same force ({calculateForce()} N) → Different accelerations!
             </Typography>
             <Typography variant="caption" sx={{ color: '#4A5568', display: 'block', mt: 0.5 }}>
-              Both objects feel the same {calculateForce()} N force, but Moon accelerates {getAccelerationRatio()}× more than Earth because it's lighter!
+              Ratio: {getAccelerationRatio()}:1 (Moon:Earth)
             </Typography>
-            
-            <Alert severity="success" sx={{ mt: 1.5, py: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                💡 Try changing mass or distance to see effects!
-              </Typography>
-            </Alert>
           </Box>
         </FormulaPanel>
 
@@ -1894,19 +1784,13 @@ const EarthMoonSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigat
                 }}
               >
                 <Typography variant="body2" fontWeight={600} gutterBottom>
-                  ✓ Newton's 3rd Law - Equal Forces
+                  ✓ Forces are EQUAL
                 </Typography>
                 <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
                   • F_on_Moon = F_on_Earth = {calculateForce()} N
                 </Typography>
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                  • Equal in magnitude
-                </Typography>
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                  • Acting in opposite directions
-                </Typography>
                 <Typography variant="caption" sx={{ display: 'block' }}>
-                  • Not acting on the same object
+                  • Both act through gravitational field
                 </Typography>
               </Alert>
 
@@ -1959,19 +1843,17 @@ const EarthMoonSimulation: React.FC<SimulationProps> = ({ currentPage, onNavigat
                   }}
                 >
                   <Typography variant="body2" fontWeight={600} gutterBottom>
-                    ❌ Common Misconception
+                    ❌ Misconception
                   </Typography>
                   <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
                     "The bigger object exerts a stronger force"
                   </Typography>
                   <Typography variant="body2" fontWeight={600} gutterBottom>
-                    ✅ Reality (Newton's 3rd Law)
+                    ✅ Reality
                   </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                    Both forces are ALWAYS equal in magnitude! The difference is in acceleration: a = F/m
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block' }}>
-                    Smaller mass → larger acceleration (Moon moves more)
+                  <Typography variant="caption">
+                    Both forces are equal! The difference is in acceleration: F = ma, so smaller
+                    mass → larger acceleration.
                   </Typography>
                 </Alert>
               </Collapse>
